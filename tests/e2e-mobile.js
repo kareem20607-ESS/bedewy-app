@@ -129,7 +129,7 @@ function ok(name, cond, extra) { results.push([cond ? 'PASS' : 'FAIL', name, ext
   ok('own new permit SP-0201 is in acc inbox (made by site)', (await page.locator('[data-key]').evaluateAll(els => els.some(e => /SP-0201/.test(e.textContent)))));
   await page.goto(BASE + '#doc/s-200'); await page.waitForSelector('.tlx');
   await shot('18-doc-approved', true);
-  ok('approved doc shows journal line', /رُحِّل في اليومية/.test(await page.locator('.tlx').textContent()));
+  ok('approved doc shows journal line', /قيد اليومية: 5100 مدين/.test(await page.locator('.tlx').textContent()));
 
   /* ---------- محاسب الموقع: يعدّل المرفوض ويعيد إرساله ---------- */
   await role('site');

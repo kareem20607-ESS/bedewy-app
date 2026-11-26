@@ -212,10 +212,27 @@
       lines + scr + '<circle cx="104" cy="140" r="16" fill="none" stroke="#3B5BB5" stroke-width="2" opacity=".7"/></g></svg>';
   }
   /* بيرجّع HTML الصورة (img أو رسم) لمستند */
+  /* صور المستندات الحقيقية في فولدر خاص على Drive، وبتوصل عن طريق السكريبت بعد التأكد من الدخول، وبتتحفظ على الجهاز */
+  var fetching = {};
+  function drivePhoto(ref) {
+    return blob.get(ref).then(function (v) {
+      if (v) return v;
+      if (!LIVE || !S.token) return null;
+      if (!fetching[ref]) fetching[ref] = post(CFG.API_URL, { action: 'photo', idToken: S.token, id: ref }, 45000).then(function (r) {
+        delete fetching[ref];
+        if (r && r.ok && r.data) { blob.put(ref, r.data); return r.data; }
+        return null;
+      });
+      return fetching[ref];
+    });
+  }
+  var NOPHOTO = '<svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice"><rect width="320" height="180" fill="#DCE2EC"/>' +
+    '<text x="160" y="96" font-family="Cairo" font-size="13" font-weight="700" fill="#5B6472" text-anchor="middle">الصورة مش متاحة دلوقتي</text></svg>';
   function photoHtml(ref, kind) {
     if (!ref) return Promise.resolve('');
     var m = /^sample:(\d+)/.exec(ref);
     if (m) return Promise.resolve(docArt(m[1], kind));
+    if (/^drive:/.test(ref)) return drivePhoto(ref).then(function (v) { return v ? '<img alt="" src="' + v + '">' : NOPHOTO; });
     if (/^(https?:|data:)/.test(ref)) return Promise.resolve('<img alt="" src="' + esc(ref) + '">');
     return blob.get(ref).then(function (v) { return v ? '<img alt="" src="' + v + '">' : docArt(3, kind); });
   }
@@ -291,7 +308,7 @@
   function prepare(op) {
     var o = JSON.parse(JSON.stringify(op)), keys = ['photo', 'sign'];
     return Promise.all(keys.map(function (k) {
-      var ref = o.doc && o.doc[k]; if (!ref || /^(sample:|https?:)/.test(ref)) return null;
+      var ref = o.doc && o.doc[k]; if (!ref || /^(sample:|https?:|drive:)/.test(ref)) return null;     /* الصورة اللي على Drive ما بتترفعش تاني */
       return blob.get(ref).then(function (v) { if (v) o.doc[k + 'Data'] = v; });
     })).then(function () { return o; });
   }
@@ -312,7 +329,7 @@
       else if (kind === 'approve') {
         x.status = 'معتمد'; x.decidedBy = who; x.decidedAt = t;
         x.log = (x.log || []).concat([[t, 'اعتُمد', who]]);
-        var j = journal(x); if (j) x.log.push([t + 1, 'رُحِّل في اليومية: ' + j, '']);
+        var j = journal(x); if (j) x.log.push([t + 1, 'قيد اليومية: ' + j, '']);
       } else {
         x.status = 'مرفوض'; x.reason = extra.reason; x.note = extra.note || ''; x.decidedBy = who; x.decidedAt = t;
         x.log = (x.log || []).concat([[t, 'رُفض: ' + extra.reason, who]]);
@@ -328,7 +345,7 @@
   function journal(x) {
     var v = value(x); if (v == null) return '';
     if (x.type === 'permit') return '5100 مدين / 2200 دائن — ' + money(v);
-    if (x.type === 'exp') return (x.cat === 'وقود' || x.cat === 'نقل' || x.cat === 'صيانة' ? '5400' : '5500') + ' مدين / 1500 دائن — ' + money(v);
+    if (x.type === 'exp') return S.data.settings.postExp ? (x.cat === 'وقود' || x.cat === 'نقل' || x.cat === 'صيانة' ? '5400' : '5500') + ' مدين / 1500 دائن — ' + money(v) : '';   /* مصروفات العهدة لسه مش بتترحّل */
     if (x.type === 'voucher') return (x.account || '2100') + ' مدين / ' + (x.from === 'البنك' ? '1120' : '1110') + ' دائن — ' + money(v);
     return '';
   }
@@ -517,9 +534,11 @@
       (recent.length ? '<div class="list boxed">' + recent.map(function (x) { return docRow(x); }).join('') + '</div>' : '<div class="card empty"><b>لم تسجّل شيئًا بعد</b>ابدأ من الأزرار في أعلى الشاشة.</div>') +
       '</main>' + nav('home');
   }
+  /* المصروف تبع العهدة الحالية (المستندات من غير رقم عهدة لسه في الطابور أو في التجربة) */
+  function inCustody(x, c) { return !x.custody || !c || !c.no || String(x.custody) === String(c.no); }
   function custody() {
     var c = (S.data && S.data.custody) || { amount: 0 };
-    var spent = docs(function (x) { return x.type === 'exp' && x.status !== 'مرفوض' && x.status !== 'ملغى'; }).reduce(function (s, x) { return s + (x.amount || 0); }, 0);
+    var spent = docs(function (x) { return x.type === 'exp' && x.status !== 'مرفوض' && x.status !== 'ملغى' && inCustody(x, c); }).reduce(function (s, x) { return s + (x.amount || 0); }, 0);
     spent += pendingDocs().filter(function (x) { return x.type === 'exp'; }).reduce(function (s, x) { return s + (x.amount || 0); }, 0);
     return { no: c.no, amount: c.amount, at: c.at, from: c.from, spent: spent, left: (c.amount || 0) - spent };
   }
@@ -719,7 +738,7 @@
     esc: esc, num: num, money: money, short: short, iso: iso, today: today, hm: hm, when: when, ago: ago, dateLong: dateLong, dateShort: dateShort, dayName: dayName,
     uid: uid, store: store, load: load, toast: toast, km: km, me: me, role: role, project: project, party: party, item: item, boq: boq, docs: docs, byKey: byKey,
     isMine: isMine, value: value, title: title, sub: sub, journal: journal, chip: chip, lead: lead, gh: gh, docRow: docRow, head: head, nav: nav, strip: strip,
-    go: go, back: goBack, backTo: backTo, render: render, IC: IC, blob: blob, docArt: docArt, photoHtml: photoHtml, fillPhotos: fillPhotos, queue: queue, outbox: outbox, pendingDocs: pendingDocs,
+    go: go, back: goBack, backTo: backTo, render: render, IC: IC, inCustody: inCustody, blob: blob, docArt: docArt, photoHtml: photoHtml, fillPhotos: fillPhotos, queue: queue, outbox: outbox, pendingDocs: pendingDocs,
     decide: decide, inboxDocs: inboxDocs, openSheet: openSheet, closeSheet: closeSheet, confirmBox: confirmBox, custody: custody, overrun: overrun, post: post,
     TYPE: TYPE, ICON: ICON, emit: emit, tokenFresh: tokenFresh
   };

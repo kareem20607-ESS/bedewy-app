@@ -109,7 +109,7 @@
     }
     if (x.type === 'exp') kv = [['التصنيف', x.cat], ['المبلغ', money(x.amount)], ['التاريخ', x.date], ['العهدة', 'رقم ' + ((S.data.custody || {}).no || 1)]];
     if (x.type === 'voucher') kv = [['المبلغ', money(x.amount)], ['طريقة الدفع', x.method || '—'], ['من', x.from || '—'], ['الحساب', x.account || '—']];
-    if (x.type === 'stmt') kv = [['إجمالي الأعمال', money(x.gross)], ['الصافي المستحق', money(x.net)], ['المدفوع', money(x.paid)], ['المتبقي', money(x.net - x.paid)]];
+    if (x.type === 'stmt') kv = [['إجمالي الأعمال', money(x.gross)], ['الصافي المستحق', money(x.net)], ['المدفوع', x.paid != null ? money(x.paid) : '—'], ['المتبقي', x.paid != null ? money(x.net - x.paid) : '—']];
     return '<div class="kv2">' + kv.map(function (k) { return '<div><div class="k">' + k[0] + '</div><div class="v">' + esc(k[1]) + '</div></div>'; }).join('') + '</div>';
   }
   function heading(x) {
@@ -130,7 +130,7 @@
     var rejBox = x.status === 'مرفوض' ? '<div class="alert err" style="margin-top:10px">' + IC.bad + '<div><b>رفضه ' + esc(x.decidedBy || 'المراجع') + ': ' + esc(x.reason || '') + '</b>' + (x.note ? '<br>«' + esc(x.note) + '»' : '') + '</div></div>' : '';
     var lock = x.status === 'معتمد' ? '<span class="lockt">' + IC.lock + 'مقفول بعد الاعتماد</span>' : '';
     var tl = '<div class="sect" style="margin-top:16px">سجل المستند</div><div class="tlx">' + history(x).map(function (l) {
-      var cls = /^اعتُمد|^اعتماد|^رُحِّل/.test(l[1]) ? ' ok' : /^رُفض/.test(l[1]) ? ' rej' : '';
+      var cls = /^اعتُمد|^اعتماد|^رُحِّل|^قيد/.test(l[1]) ? ' ok' : /^رُفض/.test(l[1]) ? ' rej' : '';
       return '<div class="st' + cls + '"><div class="a">' + esc(l[1]) + (l[2] ? ' — ' + esc(l[2]) : '') + '</div><div class="b">' + R.when(l[0]) + '</div></div>';
     }).join('') + '</div>';
     var foot = '';
@@ -169,9 +169,9 @@
   /* ---------- القرارات ---------- */
   function approveText(x) {
     var j = R.journal(x);
-    if (x.type === 'stmt') return stage(x) === 'tech' ? ['اعتماد فني لـ ' + x.id + '؟', 'يروح للمالك للاعتماد النهائي.'] : ['اعتماد نهائي لـ ' + x.id + '؟', 'الصافي (' + money(x.net) + ') يبقى مستحق الصرف، وPDF المستخلص يتبعت بالبريد.'];
+    if (x.type === 'stmt') return stage(x) === 'tech' ? ['اعتماد فني لـ ' + x.id + '؟', 'يروح للمالك للاعتماد النهائي.'] : ['اعتماد نهائي لـ ' + x.id + '؟', 'الصافي (' + money(x.net) + ') يبقى مستحق الصرف.'];
     if (x.type === 'qty') return ['اعتماد ' + x.id + '؟', 'المحضر يتقفل ويدخل في مستخلص الفترة.'];
-    return ['اعتماد ' + (x.id || '') + '؟', 'المستند يتقفل' + (j ? ' ويترحّل في اليومية: ' + j : '') + '.'];
+    return ['اعتماد ' + (x.id || '') + '؟', 'المستند يتقفل' + (j ? '. قيده في اليومية: ' + j : '') + '.'];
   }
   function fail(res) { R.toast(res && res.error === 'offline' ? 'القرار محتاج نت. جرّب أول ما النت يرجع.' : 'القرار ما اتسجّلش' + (res && (res.message || res.error) ? ': ' + (res.message || res.error) : '') + '.'); }
   function doApprove(x, fromList) {

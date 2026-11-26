@@ -7,5 +7,5 @@ window.BDW_CONFIG = {
   API_URL: '',
   WRITE_URL: '',
   PREVIEW: false,
-  BUILD: '2026-11-22.1'
+  BUILD: '2026-11-26.2'
 };

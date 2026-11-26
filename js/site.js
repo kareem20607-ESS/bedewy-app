@@ -316,7 +316,7 @@
   /* ---------- العهدة (2.4) ---------- */
   function viewCustody() {
     var c = R.custody(), pct = c.amount ? Math.min(1, c.spent / c.amount) : 0;
-    var list = R.docs(function (x) { return x.type === 'exp'; }).concat(R.pendingDocs().filter(function (x) { return x.type === 'exp'; })).sort(function (a, b) { return b.at - a.at; });
+    var list = R.docs(function (x) { return x.type === 'exp' && R.inCustody(x, c); }).concat(R.pendingDocs().filter(function (x) { return x.type === 'exp'; })).sort(function (a, b) { return b.at - a.at; });
     var canAdd = R.role() === 'site';
     return R.head({ title: 'العهدة', pbar: true }) + '<main class="view">' + R.strip() +
       '<div class="card pad"><div style="display:flex;align-items:center;gap:10px">' + R.lead('wallet', 'gold') +

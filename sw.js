@@ -1,11 +1,11 @@
 /* عامل الخدمة: يفتح التطبيق من غير نت.
    - الملفات اللي ليها رقم نسخة (?v=) والخطوط والأيقونات: من المحفوظ أولًا.
    - الصفحة نفسها: من الشبكة أولًا عشان التحديث يوصل فورًا، ولو الشبكة اتأخرت أو وقعت نرجع للمحفوظ. */
-var CACHE = 'bdw-shell-v1';
-var SHELL = ['./', 'index.html', 'css/app.css?v=1', 'css/fonts.css?v=1',
+var CACHE = 'bdw-shell-v2';
+var SHELL = ['./', 'index.html', 'css/app.css?v=2', 'css/fonts.css?v=2',
   'fonts/cairo-arabic-400-normal.woff2', 'fonts/cairo-arabic-600-normal.woff2', 'fonts/cairo-arabic-700-normal.woff2', 'fonts/cairo-arabic-800-normal.woff2',
   'fonts/cairo-latin-400-normal.woff2', 'fonts/cairo-latin-600-normal.woff2', 'fonts/cairo-latin-700-normal.woff2', 'fonts/cairo-latin-800-normal.woff2',
-  'js/config.js?v=1', 'js/sample.js?v=1', 'js/icons.js?v=1', 'js/pages.js?v=1', 'js/site.js?v=1', 'js/approve.js?v=1', 'js/app.js?v=1',
+  'js/config.js?v=2', 'js/sample.js?v=2', 'js/icons.js?v=2', 'js/pages.js?v=2', 'js/site.js?v=2', 'js/approve.js?v=2', 'js/app.js?v=2',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
 var NET_WAIT = 3500;
 self.addEventListener('install', function (e) {
