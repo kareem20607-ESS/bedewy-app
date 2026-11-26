@@ -123,6 +123,9 @@
       (office() ? '<br>فك المحاضر بيرجّعها جاهزة لمستخلص جديد.' : ''));
     if (x.status === 'ملغى') al += alertBox('info', 'المستخلص ده اتلغى وفُكّت محاضره، فقيمته صفر.');
     if (noRate) al += alertBox('err', count(noRate, 'بند واحد', 'بندين', 'بنود', 'بندًا') + ' بلا فئة في عقد المقاول — قيمتها صفر لحد ما الفئة تتضاف.');
+    var pdf = x.status !== 'ملغى' && ['eng', 'acc', 'owner', 'admin'].indexOf(S.role) >= 0 ?
+      '<div class="card pad" style="margin-top:10px"><button class="pdfrow" data-act="f-pdf" data-id="' + esc(x.id) + '">' + IC.download + '<span>PDF المستخلص<small>' +
+      (x.status === 'معتمد' ? 'نفس النسخة اللي بتتبعت بالبريد مع الاعتماد النهائي' : 'نسخة للمراجعة، ومكتوب عليها حالة المستخلص') + '</small></span></button></div>' : '';
     var lines = '';
     if (L.groups.length) {
       lines = '<div class="sect">البنود من المحاضر<span class="s">' + count(L.recs.length, 'محضر واحد', 'محضرين', 'محاضر', 'محضرًا') + '</span></div><div class="card pad lines">' + L.groups.map(function (g) {
@@ -146,7 +149,7 @@
     else if (x.status === 'مرفوض' && office()) foot = '<div class="fbar"><button class="btn nv" data-act="f-unlink" data-id="' + esc(x.id) + '">' + IC.undo + 'فك المحاضر لمستخلص جديد</button></div>';
     else if (decide) foot = '<div class="fbar"><button class="btn" data-act="f-approve" data-id="' + esc(x.id) + '">' + IC.check + (tech ? 'اعتماد فني' : 'اعتماد نهائي') + '</button>' +
       '<button class="btn dng fit" data-act="reject" data-key="' + esc(x.key) + '">' + IC.x + 'رفض</button></div>';
-    return R.head({ title: x.id, back: true }) + '<main class="view' + (foot ? ' withbar' : '') + '">' + card + steps + (al ? '<div style="margin-top:10px">' + al + '</div>' : '') + lines + pay + tl + '</main>' + (foot || R.nav('stmts'));
+    return R.head({ title: x.id, back: true }) + '<main class="view' + (foot ? ' withbar' : '') + '">' + card + steps + (al ? '<div style="margin-top:10px">' + al + '</div>' : '') + pdf + lines + pay + tl + '</main>' + (foot || R.nav('stmts'));
   }
 
   /* قرارات المستخلص من شاشته: الاعتماد الفني والنهائي (الرفض بشاشة الرفض العامة) */
@@ -159,7 +162,7 @@
           busy = false;
           if (!res || !res.ok) return R.toast(res && res.error === 'offline' ? 'القرار محتاج نت. جرّب أول ما النت يرجع.' : 'القرار ما اتسجّلش' + (res && res.message ? ': ' + res.message : '') + '.');
           R.toast(tech ? 'اعتماد فني لـ ' + x.id + '، ووصل للمالك.' : 'اتعتمد ' + x.id + '.');
-          if (R.inTrail('inbox')) R.backTo('inbox'); else R.render(true);
+          if (R.inTrail('desk')) R.backTo('desk'); else if (R.inTrail('inbox')) R.backTo('inbox'); else R.render(true);
         });
       } });
   }
@@ -568,6 +571,28 @@
   R.acts['f-tab'] = function (b) { S.tab[b.getAttribute('data-k')] = b.getAttribute('data-t'); R.render(); };
   R.acts['f-stmt'] = function (b) { R.go('stmt/' + encodeURIComponent(b.getAttribute('data-id'))); };
   R.acts['f-party'] = function (b) { R.go('party/' + encodeURIComponent(b.getAttribute('data-code'))); };
+  /* PDF المستخلص (6.1): السكريبت بيكتبه في ورقة الطباعة ويرجّعه، والتطبيق بيفتحه من زرار (عشان المتصفح ما يمنعش الفتح) */
+  R.acts['f-pdf'] = function (b) {
+    var id = b.getAttribute('data-id');
+    if (!R.LIVE) return R.toast('الـPDF بيطلع من ملف البيانات، فبيشتغل لما التطبيق يتوصّل بيه.');
+    if (navigator.onLine === false) return R.toast('الـPDF محتاج نت.');
+    if (busy) return; busy = true;
+    R.toast('بجهّز PDF المستخلص ' + id + '…');
+    R.post(R.CFG.WRITE_URL, { action: 'stmtPdf', idToken: S.token, id: id }, 60000).then(function (res) {
+      busy = false;
+      if (!res || !res.ok || !res.data) return R.toast((res && res.message) || 'الـPDF ما اتعملش. جرّب تاني.');
+      var bin = atob(res.data), u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' }));
+      var tt = document.getElementById('toast'); if (tt) tt.hidden = true;     /* «بجهّز…» خلص */
+      R.confirmBox({ title: 'PDF المستخلص جاهز', text: res.name, ok: 'افتح الـPDF', onOk: function () {
+        var a = document.createElement('a');
+        a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.download = res.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+      } });
+    });
+  };
   R.acts['f-allpay'] = function (b) { S.tab.vq = b.getAttribute('data-code'); R.go('vouchers'); };
   R.acts['f-mig'] = function () { S.tab.vmig = !S.tab.vmig; var l = $('#f-list'); if (l) l.innerHTML = vouchersList(S.tab.vq); };
   R.acts['f-voucher'] = function (b) {

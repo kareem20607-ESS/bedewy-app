@@ -190,6 +190,9 @@ function ok(name, cond, extra) { results.push([cond ? 'PASS' : 'FAIL', name, ext
   await click('[data-act="f-stmt"][data-id="SS-007"]'); await page.waitForSelector('.netl');
   await shot('32-stmt-detail', true);
   ok('statement lines from qty, no-rate warning, paid and remaining', /البنود من المحاضر/.test(await main()) && /بلا فئة في عقد المقاول/.test(await main()) && /المدفوع على المستخلص ده/.test(await main()) && /24,000/.test(await main()));
+  ok('statement has a PDF row', (await page.locator('[data-act="f-pdf"]').count()) === 1 && /PDF المستخلص/.test(await main()));
+  await click('[data-act="f-pdf"]');
+  ok('demo: PDF explains it needs the data file', /بيطلع من ملف البيانات/.test(await toast()), await toast());
   await page.goto(BASE + '#stmts'); await page.waitForSelector('.fab');
   await click('.fab'); await page.waitForSelector('.form');
   await click('[data-act="f-save"]');
@@ -282,6 +285,113 @@ function ok(name, cond, extra) { results.push([cond ? 'PASS' : 'FAIL', name, ext
   await ctx.setOffline(false); await page.evaluate(() => window.dispatchEvent(new Event('online'))); await page.waitForTimeout(1600);
   ok('back online: queued expense numbered', /EX-0016/.test(await page.locator('main').textContent()), await toast());
   await shot('28-online-synced');
+
+  /* 5.3 أرشيف المستندات */
+  await role('eng');
+  ok('eng nav has the archive', (await page.locator('.nav [data-to="archive"]').count()) === 1);
+  await click('.nav [data-to="archive"]'); await page.waitForSelector('.arcs');
+  ok('archive: permits by month with photos', (await page.locator('.arc').count()) > 0 && (await page.locator('.arc .th svg, .arc .th img').count()) > 0 && /الإذونات/.test(await page.locator('.tabs').textContent()) && (await page.locator('main .gh').count()) > 0);
+  await shot('33-archive');
+  ok('no horizontal overflow on archive', !(await overflow()));
+  const arcId = ((await page.locator('.arc .tx b').first().textContent()) || '').trim();
+  await page.fill('#ar-q', arcId); await page.waitForTimeout(200);
+  ok('archive search by number', (await page.locator('.arc').count()) >= 1 && ((await page.locator('.arc .tx b').first().textContent()) || '').trim() === arcId, arcId);
+  await page.fill('#ar-q', 'zzzz'); await page.waitForTimeout(150);
+  ok('archive search with no result says what to try', /مفيش نتيجة/.test(await main()));
+  await page.fill('#ar-q', ''); await page.waitForTimeout(150);
+  await click('[data-act="ar-tab"][data-t="qty"]');
+  ok('archive qty tab', (await page.locator('.arc').count()) > 0);
+  await click('.arc'); await page.waitForSelector('.zoomwrap');
+  ok('card opens the photo with its caption', /محضر كميات/.test(await page.locator('.zcap').textContent()) && (await page.locator('[data-act="ar-doc"]').count()) === 1);
+  await click('[data-act="ar-doc"]'); await page.waitForTimeout(300);
+  ok('open the document from the archive', /^#doc\//.test(await page.evaluate(() => location.hash)), await page.evaluate(() => location.hash));
+  await role('acc');
+  await click('[data-act="menu"]');
+  ok('office reaches the archive from the menu', (await page.locator('.dr-item[data-to="archive"]').count()) === 1);
+  await click('.dr-item[data-to="archive"]'); await page.waitForSelector('.arcs');
+  ok('accountant sees the archive', (await page.locator('.arc').count()) > 0);
+
+  /* 5.2 العرض على الكمبيوتر: على الموبايل الأجزاء تحت بعض */
+  await click('[data-act="menu"]');
+  ok('office reaches the desk view from the menu', (await page.locator('.dr-item[data-to="desk"]').count()) === 1);
+  await click('.dr-item[data-to="desk"]'); await page.waitForSelector('#dk-tb');
+  ok('desk on a phone: registers, table and details stacked, no overflow', (await page.locator('.dk-side [data-act="dk-set"]').count()) === 6 && !(await overflow()) && await page.locator('.nav').isVisible());
+  await shot('40-desk-phone');
+
+  /* وعلى الكمبيوتر: ثلاث أعمدة */
+  const dctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, locale: 'ar-EG' });
+  await dctx.addInitScript(() => {
+    let c;
+    Object.defineProperty(window, 'BDW_CONFIG', { configurable: true,
+      get() { return c; }, set(v) { c = Object.assign({}, v, { API_URL: '', WRITE_URL: '' }); } });
+  });
+  const dp = await dctx.newPage();
+  dp.on('pageerror', e => errors.push('desk pageerror: ' + e.message));
+  dp.on('console', m => { if (m.type() === 'error') errors.push('desk console: ' + m.text()); });
+  const dwait = (ms) => dp.waitForTimeout(ms || 250);
+  const drole = async (r) => { await dp.evaluate(() => { location.hash = ''; }); await dp.waitForSelector('[data-act="menu"]'); await dp.click('[data-act="menu"]'); await dp.click('[data-act="role"][data-r="' + r + '"]'); await dwait(300); };
+  const desk = async () => { await dp.evaluate(() => { location.hash = 'desk'; }); await dp.waitForSelector('#dk-tb'); await dwait(); };
+  const rowsN = async () => dp.locator('#dk-tb tr[data-k]').count();
+  const selId = async () => ((await dp.locator('#dk-tb tr.sel .rid').textContent().catch(() => '')) || '').trim();
+  await dp.goto(BASE); await dp.waitForSelector('.greet');
+  await drole('acc'); await desk();
+  const inboxN = await rowsN(), first = await selId();
+  ok('desk on a computer: wide layout, no bottom bar, first row open with its decision', await dp.evaluate(() => document.body.classList.contains('is-desk')) &&
+    !(await dp.locator('.nav').isVisible()) && inboxN > 1 && !!first && (await dp.locator('#dk-det [data-act="quick"]').count()) === 1 &&
+    (await dp.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)), [inboxN, first]);
+  await dp.screenshot({ path: path.join(SHOTS, '41-desk-inbox.png') });
+  await dp.click('#dk-det [data-act="quick"]'); await dp.waitForSelector('#sheet [data-act="dlg-ok"]'); await dp.click('#sheet [data-act="dlg-ok"]'); await dwait(500);
+  ok('approve from the panel: the row leaves, the next one opens', (await rowsN()) === inboxN - 1 && (await selId()) !== first && !!(await selId()) &&
+    /اتعتمد/.test((await dp.locator('#toast').textContent()) || '') && /^#desk$/.test(await dp.evaluate(() => location.hash)), [await rowsN(), await selId()]);
+  await dp.click('[data-act="dk-set"][data-s="permit"]'); await dwait();
+  const permitN = await rowsN();
+  await dp.fill('#dk-q', 'SP-0197'); await dwait(150);
+  ok('search narrows the table and the count says how many of all', (await rowsN()) === 1 && /1 من/.test(await dp.locator('.dk-bar h2').textContent()), await dp.locator('.dk-bar h2').textContent());
+  await dp.fill('#dk-q', 'zzzz'); await dwait(150);
+  ok('search with no match says what to change', /غيّر الكلمة/.test(await dp.locator('#dk-tb').textContent()));
+  await dp.fill('#dk-q', ''); await dwait(150);
+  await dp.selectOption('#dk-st', 'مرفوض'); await dwait(150);
+  const stRows = await dp.locator('#dk-tb tr[data-k] .chip').allTextContents();
+  ok('status filter keeps only that status', stRows.length >= 1 && stRows.length < permitN && stRows.every(t => /مرفوض/.test(t)), stRows);
+  await dp.selectOption('#dk-st', ''); await dwait(150);
+  await dp.click('[data-act="dk-sort"][data-c="amount"]'); await dwait();
+  const amts = (await dp.locator('#dk-tb td.n').allTextContents()).map(t => Number(t.replace(/[^\d]/g, '')) || 0);
+  ok('sort by value, largest first', amts.length === permitN && amts.every((v, i) => i === 0 || amts[i - 1] >= v) && /▾/.test(await dp.locator('th[aria-sort="descending"]').textContent()), amts);
+  await dp.click('[data-act="dk-set"][data-s="voucher"]'); await dwait();
+  ok('vouchers: every voucher of the project, receipts too', (await rowsN()) > 10 && /قبض/.test(await dp.locator('#dk-tb').textContent()));
+  await dp.locator('#dk-tb tr[data-k] td:nth-child(4)').first().click(); await dwait(150);
+  const v1 = await selId();
+  await dp.keyboard.press('ArrowDown'); await dwait(150);
+  const v2 = await selId();
+  ok('arrow keys move through the rows and the panel follows', !!v1 && v2 !== v1 && ((await dp.locator('#dk-det .dk-h').textContent()) || '').trim() === v2 &&
+    await dp.evaluate(() => document.activeElement && document.activeElement.classList.contains('rid')), [v1, v2]);
+  const lineRow = await dp.evaluate(() => { const t = [...document.querySelectorAll('#dk-tb tr[data-k]')].find(tr => /RV-/.test(tr.textContent)); return t ? t.getAttribute('data-k') : ''; });
+  await dp.click('#dk-tb tr[data-k="' + lineRow + '"] .rid'); await dwait(150);
+  ok('a register line with no document is for viewing only', /للعرض بس/.test(await dp.locator('#dk-det').textContent()) && (await dp.locator('#dk-det [data-act="quick"]').count()) === 0, lineRow);
+  await dp.click('[data-act="dk-set"][data-s="inbox"]'); await dwait();
+  await dp.locator('#dk-tb tr.sel .rid').focus(); await dp.keyboard.press('Enter'); await dwait(300);
+  ok('Enter opens the full document', /^#doc\//.test(await dp.evaluate(() => location.hash)), await dp.evaluate(() => location.hash));
+  await dp.click('[data-act="back"]'); await dwait(400);
+  ok('back returns to the desk on the same register', (await dp.evaluate(() => location.hash)) === '#desk' && (await dp.locator('.dk-side .on').getAttribute('data-s')) === 'inbox');
+  const rejN = await rowsN(), rejId = await selId();
+  await dp.click('#dk-det [data-act="reject"]'); await dp.waitForSelector('[data-act="rej-reason"]');
+  await dp.locator('[data-act="rej-reason"]').first().click(); await dp.click('[data-act="rej-confirm"]');
+  await dp.waitForSelector('#sheet [data-act="dlg-ok"]'); await dp.click('#sheet [data-act="dlg-ok"]'); await dwait(600);
+  ok('reject from the desk comes back to the desk', (await dp.evaluate(() => location.hash)) === '#desk' && (await rowsN()) === rejN - 1 &&
+    !(await dp.locator('#dk-tb').textContent()).includes(rejId), [await dp.evaluate(() => location.hash), rejId]);
+  await drole('owner'); await desk();
+  await dp.click('[data-act="dk-set"][data-s="stmt"]'); await dwait();
+  await dp.click('#dk-tb tr[data-k="doc|ss-007"] .rid').catch(() => {}); await dwait(150);
+  const okBtn = ((await dp.locator('#dk-det [data-act="quick"]').textContent().catch(() => '')) || '');
+  ok('owner: a statement waiting for the final approval has it in the panel', /اعتماد نهائي/.test(okBtn) && (await dp.locator('#dk-det .dk-open').count()) === 1, okBtn);
+  await dp.screenshot({ path: path.join(SHOTS, '42-desk-stmt.png') });
+  await dp.click('#dk-det .dk-open'); await dp.waitForSelector('[data-act="f-approve"]');
+  await dp.click('[data-act="f-approve"]'); await dp.waitForSelector('#sheet [data-act="dlg-ok"]'); await dp.click('#sheet [data-act="dlg-ok"]'); await dwait(600);
+  ok('final approval from the full statement comes back to the desk', (await dp.evaluate(() => location.hash)) === '#desk' &&
+    /معتمد/.test(await dp.locator('#dk-tb tr[data-k="doc|ss-007"]').textContent()), await dp.evaluate(() => location.hash));
+  await drole('site'); await dp.evaluate(() => { location.hash = 'desk'; }); await dp.waitForSelector('main .empty'); await dwait();
+  ok('site role: the desk is for the office', /للمكتب/.test(await dp.locator('main').textContent()) && !(await dp.evaluate(() => document.body.classList.contains('is-desk') && !!document.querySelector('.dk-side'))));
+  await dctx.close();
 
   await page.goto(BASE + '#all'); await page.waitForSelector('.pg-sec');
   await shot('29-all-screens', true);

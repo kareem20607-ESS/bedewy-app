@@ -146,6 +146,54 @@ const get = (u) => fetch(u).then(r => r.json());
   ok('dashboard from the script', (await ap.locator('.kpi').count()) === 6 && /آخر تحديث من ملف البيانات/.test(await am()));
   await ap.screenshot({ path: path.join(SHOTS, 'live-06-dash.png'), fullPage: true });
 
+  /* 6.2: اختيارات الإشعارات بتتحفظ في صف المستخدم في الشيت */
+  const sheetNow = () => fetch('http://127.0.0.1:8790/sheet').then(r => r.json());
+  const accRow = async () => (await sheetNow()).users.find(r => r[0] === 'acc@test.dev') || [];
+  await ap.evaluate(() => { location.hash = '#prefs'; }); await ap.waitForSelector('.tgl');
+  ok('prefs come from the users sheet', /محفوظة في صفّك/.test(await am()) && /acc@test\.dev/.test(await am()) &&
+    (await ap.locator('[data-k="approve"] .tgl.off').count()) === 0 && (await ap.locator('[data-k="daily"] .tgl.off').count()) === 1);
+  await click(ap, '[data-act="notify"][data-k="approve"]');
+  await ap.waitForFunction(() => /وقفت إيميلات الاعتماد/.test(document.getElementById('toast').textContent), null, { timeout: 10000 }).catch(() => { });
+  ok('turning approval emails off saves «لا»', (await accRow())[6] === 'لا' && (await ap.locator('[data-k="approve"] .tgl.off').count()) === 1, await toast(ap));
+  await ap.reload(); await ap.waitForSelector('.tgl');
+  await ap.waitForFunction(() => document.querySelector('[data-k="approve"] .tgl.off'), null, { timeout: 15000 }).catch(() => { });
+  ok('the choice survives a reload', (await ap.locator('[data-k="approve"] .tgl.off').count()) === 1);
+  await click(ap, '[data-act="notify"][data-k="daily"]');
+  await ap.waitForFunction(() => /ملخص اليوم بالبريد/.test(document.getElementById('toast').textContent), null, { timeout: 10000 }).catch(() => { });
+  ok('daily summary on for the accountant', (await accRow())[7] === 'نعم', await toast(ap));
+  await click(ap, '[data-act="notify"][data-k="approve"]');
+  await ap.waitForTimeout(800);
+  ok('approval emails back on', (await accRow())[6] === 'نعم');
+
+  /* 6.1: PDF المستخلص من شاشته */
+  await ap.evaluate(() => { location.hash = '#stmt/SS-002'; }); await ap.waitForSelector('.netl');
+  await click(ap, '[data-act="f-pdf"]');
+  await ap.waitForSelector('.dlg', { timeout: 15000 }).catch(() => { });
+  ok('statement PDF ready from the script', /PDF المستخلص جاهز/.test((await ap.locator('.dlg').textContent().catch(() => '')) || '') && /مستخلص SS-002 — .+\.pdf/.test(await ap.locator('.dlg p').textContent().catch(() => '')));
+  await click(ap, '[data-act="sheet-close"]');
+
+  /* 5.3: الأرشيف من السكريبت بصور صغيرة */
+  await ap.evaluate(() => { location.hash = '#archive'; });
+  await ap.waitForSelector('.arc', { timeout: 15000 }).catch(() => { });
+  ok('archive from the script', (await ap.locator('.arc').count()) > 0 && /الإذونات/.test(await ap.locator('.tabs').textContent()));
+  await ap.waitForSelector('.arc .th img', { timeout: 15000 }).catch(() => { });
+  ok('archive thumbnails load through the script', (await ap.locator('.arc .th img').count()) > 0);
+
+  /* 5.2: العرض على الكمبيوتر، والسجل الكامل للإذونات والمصروفات من السكريبت */
+  await ap.setViewportSize({ width: 1280, height: 800 });
+  await ap.evaluate(() => { location.hash = '#desk'; }); await ap.waitForSelector('#dk-tb');
+  ok('desk opens wide in live mode', await ap.evaluate(() => document.body.classList.contains('is-desk')) && !(await ap.locator('.nav').isVisible()));
+  await click(ap, '[data-act="dk-set"][data-s="permit"]');
+  await ap.waitForSelector('#dk-tb tr[data-k="permit|SP-0001"]', { timeout: 15000 }).catch(() => { });
+  ok('full permit register from the script, old rows included', (await ap.locator('#dk-tb tr[data-k="permit|SP-0001"]').count()) === 1 && (await ap.locator('.dk-hint').count()) === 0,
+    await ap.locator('#dk-tb').textContent());
+  await click(ap, '#dk-tb tr[data-k="permit|SP-0001"] .rid');
+  ok('an old permit shows its line from the file', /للعرض بس/.test(await ap.locator('#dk-det').textContent()) && /1,950/.test(await ap.locator('#dk-det').textContent()));
+  await click(ap, '[data-act="dk-set"][data-s="exp"]');
+  await ap.waitForFunction(() => !document.querySelector('.dk-hint'), null, { timeout: 15000 }).catch(() => { });
+  ok('custody expenses register from the script', (await ap.locator('#dk-tb tr[data-k^="exp|"]').count()) > 0);
+  await ap.screenshot({ path: path.join(SHOTS, 'live-07-desk.png') });
+
   ok('no JS errors', errs.length === 0, errs.join(' | '));
   results.forEach(r => console.log(r[0], '-', r[1], r[0] === 'FAIL' && r[2] ? '— ' + r[2].slice(0, 300) : ''));
   console.log(results.filter(r => r[0] === 'FAIL').length + ' failed of ' + results.length);

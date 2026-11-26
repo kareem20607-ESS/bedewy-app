@@ -67,14 +67,14 @@
   /* nav = الشريط السفلي، more = شاشات زيادة في القائمة الجانبية */
   var ROLES = {
     site: { n: 'محاسب الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['new/permit', 'إذن جديد', 'truck'], ['new/qty', 'محضر جديد', 'ruler'], ['custody', 'العهدة', 'wallet'], ['mine', 'سجلاتي', 'folder']] },
-    eng: { n: 'مهندس الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['new/qty', 'محضر جديد', 'ruler'], ['mine', 'سجلاتي', 'folder'], ['soon:5.3', 'الأرشيف', 'images']],
-      more: [['stmts', 'المستخلصات', 'stmt']] },
+    eng: { n: 'مهندس الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['new/qty', 'محضر جديد', 'ruler'], ['mine', 'سجلاتي', 'folder'], ['archive', 'الأرشيف', 'images']],
+      more: [['stmts', 'المستخلصات', 'stmt'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
     acc: { n: 'محاسب المشروع', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['stmts', 'المستخلصات', 'stmt'], ['vouchers', 'السندات', 'money'], ['parties', 'الأطراف', 'users']],
-      more: [['dash', 'لوحة المشروع', 'pie']] },
+      more: [['dash', 'لوحة المشروع', 'pie'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
     owner: { n: 'المالك', greet: 'يا حاج محمد', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['dash', 'اللوحة', 'pie'], ['stmts', 'المستخلصات', 'stmt'], ['parties', 'الأطراف', 'users']],
-      more: [['vouchers', 'السندات', 'money']] },
+      more: [['vouchers', 'السندات', 'money'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
     admin: { n: 'مدير المنظومة', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['dash', 'اللوحة', 'pie'], ['stmts', 'المستخلصات', 'stmt'], ['vouchers', 'السندات', 'money']],
-      more: [['parties', 'الأطراف', 'users']] }
+      more: [['parties', 'الأطراف', 'users'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] }
   };
   function role() { return S.role; }
   function me() { return { role: S.role, name: (S.user && S.user.name) || ROLES[S.role].n, email: (S.user && S.user.email) || '' }; }
@@ -237,25 +237,32 @@
   /* بيرجّع HTML الصورة (img أو رسم) لمستند */
   /* صور المستندات الحقيقية في فولدر خاص على Drive، وبتوصل عن طريق السكريبت بعد التأكد من الدخول، وبتتحفظ على الجهاز */
   var fetching = {};
-  function drivePhoto(ref) {
-    return blob.get(ref).then(function (v) {
+  /* thumb: نسخة صغيرة لكروت الأرشيف؛ لو الكبيرة محفوظة على الجهاز بنستخدمها */
+  function drivePhoto(ref, thumb) {
+    var key = thumb ? 'thumb:' + ref : ref;
+    return blob.get(key).then(function (v) {
+      if (v) return v;
+      return thumb ? blob.get(ref) : null;
+    }).then(function (v) {
       if (v) return v;
       if (!LIVE || !S.token) return null;
-      if (!fetching[ref]) fetching[ref] = post(CFG.API_URL, { action: 'photo', idToken: S.token, id: ref }, 45000).then(function (r) {
-        delete fetching[ref];
-        if (r && r.ok && r.data) { blob.put(ref, r.data); return r.data; }
+      if (!fetching[key]) fetching[key] = post(CFG.API_URL, { action: 'photo', idToken: S.token, id: ref, thumb: !!thumb }, 45000).then(function (r) {
+        delete fetching[key];
+        if (r && r.ok && r.data) { blob.put(key, r.data); return r.data; }
         return null;
       });
-      return fetching[ref];
+      return fetching[key];
     });
   }
   var NOPHOTO = '<svg viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice"><rect width="320" height="180" fill="#DCE2EC"/>' +
     '<text x="160" y="96" font-family="Cairo" font-size="13" font-weight="700" fill="#5B6472" text-anchor="middle">الصورة مش متاحة دلوقتي</text></svg>';
   function photoHtml(ref, kind) {
     if (!ref) return Promise.resolve('');
+    var th = ref.indexOf('thumb:') === 0;
+    if (th) ref = ref.slice(6);
     var m = /^sample:(\d+)/.exec(ref);
     if (m) return Promise.resolve(docArt(m[1], kind));
-    if (/^drive:/.test(ref)) return drivePhoto(ref).then(function (v) { return v ? '<img alt="" src="' + v + '">' : NOPHOTO; });
+    if (/^drive:/.test(ref)) return drivePhoto(ref, th).then(function (v) { return v ? '<img alt="" src="' + v + '">' : NOPHOTO; });
     if (/^(https?:|data:)/.test(ref)) return Promise.resolve('<img alt="" src="' + esc(ref) + '">');
     return blob.get(ref).then(function (v) { return v ? '<img alt="" src="' + v + '">' : docArt(3, kind); });
   }
@@ -575,7 +582,7 @@
       var ra = a.pending ? 0 : a.status === 'مرفوض' ? 1 : 2, rb = b.pending ? 0 : b.status === 'مرفوض' ? 1 : 2;
       return ra - rb || b.at - a.at;
     }).slice(0, 5);
-    return head({ title: 'الرئيسية', pbar: true }) + '<main class="view">' + strip() + greet(hello(), me().name) +
+    return head({ title: 'الرئيسية', pbar: true }) + '<main class="view">' + strip() + greet(hello(), me().name) + (S.role === 'eng' ? deskCta() : '') +
       '<div class="acts">' + acts.map(function (a) {
         return '<button class="act ' + a[4] + '" data-act="go" data-to="' + a[0] + '"><span class="ai">' + IC[a[3]] + '</span><span><span class="at">' + a[1] + '</span><span class="as">' + esc(a[2]) + '</span></span><span class="cv">' + IC.next + '</span></button>';
       }).join('') + '</div>' +
@@ -594,6 +601,10 @@
     spent += pendingDocs().filter(function (x) { return x.type === 'exp'; }).reduce(function (s, x) { return s + (x.amount || 0); }, 0);
     return { no: c.no, amount: c.amount, at: c.at, from: c.from, spent: spent, left: (c.amount || 0) - spent };
   }
+  /* على شاشة الكمبيوتر بس: مدخل العرض العريض (5.2) */
+  function deskCta() {
+    return '<button class="deskcta" data-act="go" data-to="desk">' + IC.monitor + '<span><b>على الكمبيوتر؟ افتح العرض العريض</b>كل السجلات في جدول، وتفاصيل المستند والاعتماد جنبه.</span>' + IC.next + '</button>';
+  }
   function viewOfficeHome() {
     var r = S.role, k = S.data.kpis || {}, inbox = inboxDocs(), t = today();
     var tdy = docs(function (x) { return iso(x.at) === t; });
@@ -601,7 +612,7 @@
     var P = sum('permit'), Q = sum('qty'), V = sum('voucher');
     var over = tdy.filter(function (x) { return x.type === 'qty' && overrun(x).after > 1; }).length;
     var pr = k.contractNet ? k.executed / k.contractNet : 0;
-    return head({ title: 'الرئيسية', pbar: true }) + '<main class="view">' + strip() + greet(hello(), ROLES[r].greet || me().name) +
+    return head({ title: 'الرئيسية', pbar: true }) + '<main class="view">' + strip() + greet(hello(), ROLES[r].greet || me().name) + deskCta() +
       '<div class="sect">بانتظار اعتمادك<span class="s">' + inbox.length + '</span></div>' +
       (inbox.length ? '<div class="list boxed" style="border-color:var(--gold-line)">' + inbox.slice(0, 3).map(function (x) { return docRow(x, { noChip: true }); }).join('') +
         (inbox.length > 3 ? '<button class="row" data-act="go" data-to="inbox" style="justify-content:center;color:var(--navy-2);font-weight:800">عرض الكل (' + inbox.length + ')</button>' : '') + '</div>'
@@ -627,8 +638,33 @@
     var before = (b.done || 0) + others;
     return { before: before / b.qty, after: (before + Number(x.qty || 0)) / b.qty, done: before + Number(x.qty || 0), b: b };
   }
+  /* اختيارات الإشعارات: من صف المستخدم في الشيت لما التطبيق متوصّل، ومن الجهاز في وضع التجربة */
+  function notifyPrefs() {
+    var u = S.data && S.data.user;
+    if (LIVE && u && u.prefs) return u.prefs;
+    return load('bdw_notify') || { approve: true, daily: S.role === 'owner' || S.role === 'admin' };
+  }
+  var prefBusy = false;
+  function toggleNotify(k) {
+    var u = S.data && S.data.user;
+    if (!(LIVE && u && u.prefs)) { var st = notifyPrefs(); st[k] = !st[k]; store('bdw_notify', st); return render(true); }
+    if (navigator.onLine === false) return toast('تغيير الإشعارات محتاج نت.');
+    if (prefBusy) return;
+    var old = !!u.prefs[k], body = { action: 'prefs', idToken: S.token };
+    body[k] = !old; u.prefs[k] = !old; prefBusy = true; render(true);
+    post(CFG.WRITE_URL, body).then(function (res) {
+      prefBusy = false;
+      if (res && res.ok && res.prefs) {
+        u.prefs = res.prefs; render(true);
+        return toast(k === 'daily' ? (res.prefs.daily ? 'هيوصلك ملخص اليوم بالبريد حوالي 9 مساءً.' : 'وقف الملخص اليومي.') :
+          (res.prefs.approve ? 'هيوصلك إيميل لما مستند يستنى قرارك أو مستند ليك يترفض.' : 'وقفت إيميلات الاعتماد.'));
+      }
+      u.prefs[k] = old; render(true);
+      toast((res && res.message) || 'الاختيار ما اتحفظش. جرّب تاني.');
+    });
+  }
   function viewSettings() {
-    var ps = S.data.projects || [], st = load('bdw_notify') || { approve: true, daily: S.role === 'owner' };
+    var ps = S.data.projects || [], st = notifyPrefs(), saved = !!(LIVE && S.data.user && S.data.user.prefs);
     return head({ title: 'إعداداتي', back: true, noSync: true }) + '<main class="view">' +
       '<div class="sect" style="margin-top:2px">المشروع الحالي</div><div class="list boxed">' +
       ps.map(function (p) {
@@ -636,9 +672,9 @@
           (p.code === S.project ? '<span class="e" style="color:var(--green)">' + IC.ok + '</span>' : '') + '</button>';
       }).join('') + (ps.length < 2 ? '<div class="lrow" style="color:var(--faint)">' + IC.folder + '<span>أي مشروع جديد يظهر هنا بمجرد إسناده لك في جدول المستخدمين</span></div>' : '') + '</div>' +
       '<div class="sect">الإشعارات</div><div class="list boxed">' +
-      '<button class="lrow" data-act="notify" data-k="approve">' + IC.inbox + '<span>إشعارات الاعتماد<small>عند وصول مستند ينتظرك أو قرار على مستندك</small></span><span class="tgl' + (st.approve ? '' : ' off') + '"></span></button>' +
+      '<button class="lrow" data-act="notify" data-k="approve">' + IC.inbox + '<span>إشعارات الاعتماد بالبريد<small>لما مستند يستنى قرارك، أو مستند ليك يترفض</small></span><span class="tgl' + (st.approve ? '' : ' off') + '"></span></button>' +
       '<button class="lrow" data-act="notify" data-k="daily">' + IC.cal + '<span>الملخص اليومي بالبريد<small>كل يوم 9 مساءً</small></span><span class="tgl' + (st.daily ? '' : ' off') + '"></span></button></div>' +
-      '<p style="font-size:12px;color:var(--muted);margin:10px 4px;line-height:1.7">الإعدادات دي محفوظة في صفّك في جدول المستخدمين، فبتتبعك على أي جهاز تدخل منه.</p>' +
+      '<p style="font-size:12px;color:var(--muted);margin:10px 4px;line-height:1.7">' + (saved ? 'الاختيارات دي محفوظة في صفّك في جدول المستخدمين، فبتتبعك على أي جهاز تدخل منه. والإيميلات بتوصل على ' + esc(S.data.user.email) + '.' : 'في وضع التجربة الاختيار بيتحفظ على الجهاز ده بس.') + '</p>' +
       '</main>' + nav('prefs');
   }
   function viewAll() {
@@ -769,7 +805,7 @@
     if (a === 'role') { S.role = b.getAttribute('data-r'); store('bdw_role', S.role); closeDrawer(); toast('بتجرّب التطبيق دلوقتي كـ' + ROLES[S.role].n); return go('home'); }
     if (a === 'reset-demo') { store('bdw_demo_docs', null); store('bdw_demo_x', null); saveOutbox([]); S.data = null; closeDrawer(); setData(JSON.parse(JSON.stringify(window.BDW_SAMPLE))); toast('رجعت بيانات العيّنة لأصلها.'); return go('home'); }
     if (a === 'project') { S.project = b.getAttribute('data-code'); store('bdw_project', S.project); if (LIVE) bootstrap(); return render(true); }
-    if (a === 'notify') { var st = load('bdw_notify') || { approve: true, daily: S.role === 'owner' }, k = b.getAttribute('data-k'); st[k] = !st[k]; store('bdw_notify', st); return render(true); }
+    if (a === 'notify') return toggleNotify(b.getAttribute('data-k'));
     if (R.acts[a]) return R.acts[a](b, e);
   });
   document.addEventListener('input', function (e) {

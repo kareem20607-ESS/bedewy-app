@@ -107,7 +107,7 @@
       if (sub) kv.push(['قيمة الباطن', c != null ? money(c * x.qty) : 'بلا فئة']);
       kv.push(['التاريخ', x.date]);
     }
-    if (x.type === 'exp') kv = [['التصنيف', x.cat], ['المبلغ', money(x.amount)], ['التاريخ', x.date], ['العهدة', 'رقم ' + ((S.data.custody || {}).no || 1)]];
+    if (x.type === 'exp') kv = [['التصنيف', x.cat], ['المبلغ', money(x.amount)], ['التاريخ', x.date], ['العهدة', x.custody ? String(x.custody) : 'رقم ' + ((S.data.custody || {}).no || 1)]];
     if (x.type === 'voucher') {
       kv = [['المبلغ', money(x.amount)], ['طريقة الدفع', x.method || '—'], [x.kind === 'قبض' ? 'إلى' : 'من', x.from || '—'],
         ['الحساب', x.account ? x.account + (R.account(x.account) ? ' — ' + R.account(x.account) : '') : '—']];
@@ -189,7 +189,7 @@
         busy = false;
         if (!res || !res.ok) return fail(res);
         R.toast(st === 'tech' ? 'اعتماد فني لـ ' + x.id + '، ووصل للمالك.' : 'اتعتمد ' + (x.id || '') + '.');
-        if (fromList) R.render(true); else R.backTo('inbox');
+        if (fromList) R.render(true); else R.backTo(R.inTrail('desk') ? 'desk' : 'inbox');
       });
     } });
   }
@@ -217,7 +217,7 @@
         if (!res || !res.ok) return fail(res);
         R.toast('اترفض ' + (x.id || '') + '، ووصل السبب لـ' + (x.byName || 'المُدخِل') + '.');
         rej = { reason: '', note: '', key: '', err: '' };
-        R.backTo('inbox');
+        R.backTo(R.inTrail('desk') ? 'desk' : 'inbox');
       });
     } });
   };
