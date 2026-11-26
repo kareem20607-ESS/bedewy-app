@@ -5,12 +5,12 @@
   var S = R.S, IC = R.IC, esc = R.esc, num = R.num, money = R.money;
   var REASONS = ['صورة غير واضحة', 'السعر غير مطابق', 'الكمية غير مطابقة', 'مورد أو صنف خطأ', 'مستند مكرر', 'أخرى'];
   var TABS = {
-    acc: [['permit', 'الإذونات'], ['exp', 'المصروفات'], ['voucher', 'السندات']],
-    admin: [['permit', 'الإذونات'], ['exp', 'المصروفات'], ['voucher', 'السندات'], ['stmt', 'المستخلصات'], ['qty', 'المحاضر']],
-    eng: [['qty', 'المحاضر'], ['stmt', 'المستخلصات']],
-    owner: [['voucher', 'السندات'], ['stmt', 'المستخلصات'], ['qty', 'المحاضر']]
+    acc: [['permit', 'الإذونات'], ['exp', 'المصروفات'], ['voucher', 'السندات'], ['count', 'الجرد']],
+    admin: [['permit', 'الإذونات'], ['exp', 'المصروفات'], ['voucher', 'السندات'], ['stmt', 'المستخلصات'], ['qty', 'المحاضر'], ['issue', 'الصرف'], ['count', 'الجرد']],
+    eng: [['qty', 'المحاضر'], ['issue', 'صرف المخزن'], ['stmt', 'المستخلصات']],
+    owner: [['voucher', 'السندات'], ['stmt', 'المستخلصات'], ['qty', 'المحاضر'], ['issue', 'الصرف']]
   };
-  var ONE = { permit: 'إذن', qty: 'محضر', exp: 'مصروف', voucher: 'سند', stmt: 'مستخلص' };
+  var ONE = { permit: 'إذن', qty: 'محضر', exp: 'مصروف', voucher: 'سند', stmt: 'مستخلص', issue: 'إذن صرف', count: 'جرد' };
   var rej = { reason: '', note: '', key: '', err: '' };
   var busy = false;
 
@@ -35,7 +35,18 @@
       if (o.after != null && o.after > 1) w.push(['warn', 'بعد هذا المحضر يصبح المنفّذ <b>' + num(o.done) + ' ' + esc(o.b.unit) + ' = ' + num(o.after * 100, 0) + '%</b> من كمية المقايسة (' + num(o.b.qty) + ').']);
       if (x.exec && x.exec !== 'ذاتي' && S.data.rates[x.exec + '|' + x.boq] == null) w.push(['warn', 'لا توجد فئة لهذا البند في عقد ' + esc(R.party(x.exec).name) + '؛ قيمته في مستخلصه صفر لحد ما الفئة تتضاف.']);
     }
-    if (x.type === 'permit' || x.type === 'qty') {
+    if (x.type === 'issue') {
+      var iu = R.item(x.item).unit, ib = R.storeBal ? R.storeBal(x.item) : null;
+      if (ib != null && x.status === 'مسجَّل') w.push(ib < -1e-9 ? ['err', 'رصيد الصنف بعد الصرف بالسالب (<b>' + num(ib) + ' ' + esc(iu) + '</b>)؛ راجع الوارد والجرد قبل الاعتماد.']
+        : ['info', 'رصيد الصنف في المخزن بعد الصرف: <b>' + num(ib) + ' ' + esc(iu) + '</b>.']);
+      if (!x.sign) w.push(['warn', 'بدون توقيع المستلم.']);
+    }
+    if (x.type === 'count') {
+      var cu = R.item(x.item).unit;
+      w.push(!x.qty ? ['ok', 'العدد الفعلي مطابق للرصيد الدفتري (' + num(x.counted) + ' ' + esc(cu) + ').']
+        : ['warn', (x.qty < 0 ? 'عجز' : 'زيادة') + ' <b>' + num(Math.abs(x.qty)) + ' ' + esc(cu) + '</b> عن الرصيد الدفتري (' + num(x.counted - x.qty) + '). الاعتماد بيسوّي رصيد الصنف بالفرق.']);
+    }
+    if (x.type === 'permit' || x.type === 'qty' || x.type === 'issue' || x.type === 'count') {
       if (!x.loc) w.push(['warn', 'اتسجّل بدون تحديد الموقع.']);
       else {
         var km = x.loc.dist != null ? x.loc.dist : R.km(x.loc, p);
@@ -81,7 +92,7 @@
     var list = all.filter(function (x) { return x.type === tab; }), late = S.data.settings.lateDays || 3;
     var body = list.length ? '<div style="padding:10px 12px 2px">' + alertHtml(['info', '<b>' + waiting(list.length) + '</b> — ' + (list.length === 1 ? 'وصل ' : 'أقدمها ') + R.ago(list[0].at)]) + '</div>' +
       '<div class="list">' + list.map(function (x) {
-        var old = Date.now() - x.at > late * 864e5, v = R.value(x), simple = x.type === 'permit' || x.type === 'exp' || x.type === 'qty', ok = clean(x);
+        var old = Date.now() - x.at > late * 864e5, v = R.value(x), simple = x.type === 'permit' || x.type === 'exp' || x.type === 'qty' || x.type === 'issue' || x.type === 'count', ok = clean(x);
         var end = simple && ok
           ? '<span class="ra"><button class="y" data-act="quick" data-key="' + esc(x.key) + '" aria-label="اعتماد ' + esc(x.id || '') + '">' + IC.check + '</button><button class="n" data-act="reject" data-key="' + esc(x.key) + '" aria-label="رفض ' + esc(x.id || '') + '">' + IC.x + '</button></span>'
           : ok ? '<span class="cv" style="color:var(--faint)">' + IC.next + '</span>' : '<span class="chip c-reg">' + IC.alert + 'راجِع</span>';
@@ -115,12 +126,21 @@
       kv.push(['التاريخ', x.date || '—']);
     }
     if (x.type === 'stmt') kv = [['إجمالي الأعمال', money(x.gross)], ['الصافي المستحق', money(x.net)], ['المدفوع', x.paid != null ? money(x.paid) : '—'], ['المتبقي', x.paid != null ? money(x.net - x.paid) : '—']];
+    if (x.type === 'issue') {
+      var ii = R.item(x.item);
+      kv = [['الكمية', num(x.qty) + ' ' + ii.unit], ['المستلم', sub ? R.party(x.exec).name : 'تنفيذ ذاتي'], ['بند المقايسة', x.boq ? R.boq(x.boq).name : '—'], ['التاريخ', x.date], ['كود الصنف', x.item]];
+    }
+    if (x.type === 'count') {
+      var ic = R.item(x.item), d = Number(x.qty) || 0;
+      kv = [['الرصيد الدفتري', num(x.counted - d) + ' ' + ic.unit], ['العدد الفعلي', num(x.counted) + ' ' + ic.unit], ['الفرق', (d > 0 ? '+' : d < 0 ? '−' : '') + num(Math.abs(d)) + ' ' + ic.unit], ['التاريخ', x.date], ['كود الصنف', x.item]];
+    }
     return '<div class="kv2">' + kv.map(function (k) { return '<div><div class="k">' + k[0] + '</div><div class="v">' + esc(k[1]) + '</div></div>'; }).join('') + '</div>';
   }
   function heading(x) {
     if (x.type === 'voucher' && !x.party) return x.notes || x.desc || R.typeName(x);
     if (x.type === 'permit' || x.type === 'voucher' || x.type === 'stmt') return R.party(x.party).name;
     if (x.type === 'qty') return R.boq(x.boq).name;
+    if (x.type === 'issue' || x.type === 'count') return R.item(x.item).name;
     return x.desc;
   }
   function viewDoc(r) {
@@ -133,7 +153,7 @@
     if (x.type === 'stmt' && R.views.stmt) return R.views.stmt({ name: 'stmt', sub: x.id, viaDoc: true });   /* المستخلص بشاشته الكاملة (4.1) */
     var decide = canDecide(x), mine = R.isMine(x), st = stage(x);
     var hero = x.photo ? '<button class="dhero" data-act="zoom" data-ref="' + esc(x.photo) + '" data-kind="' + x.type + '" data-photo="' + esc(x.photo) + '" aria-label="تكبير صورة المستند" data-ov="' + esc('<span class="ov">' + IC.eye + ' المس للتكبير</span>') + '"></button>' : '';
-    var who = '<div class="who">' + IC.user + '<span>سجّله ' + esc(x.byName || 'المُدخِل') + ' — ' + R.when(x.at) + (x.type === 'permit' && x.sign ? ' — توقيع المستلم ✓' : '') + '</span></div>';
+    var who = '<div class="who">' + IC.user + '<span>سجّله ' + esc(x.byName || 'المُدخِل') + ' — ' + R.when(x.at) + ((x.type === 'permit' || x.type === 'issue') && x.sign ? ' — توقيع المستلم ✓' : '') + '</span></div>';
     var rejBox = x.status === 'مرفوض' ? '<div class="alert err" style="margin-top:10px">' + IC.bad + '<div><b>رفضه ' + esc(x.decidedBy || 'المراجع') + ': ' + esc(x.reason || '') + '</b>' + (x.note ? '<br>«' + esc(x.note) + '»' : '') + '</div></div>' : '';
     var lock = x.status === 'معتمد' ? '<span class="lockt">' + IC.lock + 'مقفول بعد الاعتماد</span>' : '';
     var tl = '<div class="sect" style="margin-top:16px">سجل المستند</div><div class="tlx">' + history(x).map(function (l) {
@@ -144,7 +164,7 @@
     if (decide) {
       var okT = x.type === 'stmt' ? (st === 'tech' ? 'اعتماد فني' : 'اعتماد نهائي') : 'اعتماد';
       foot = '<div class="fbar"><button class="btn" data-act="approve" data-key="' + esc(x.key) + '">' + IC.check + okT + '</button><button class="btn dng fit" data-act="reject" data-key="' + esc(x.key) + '">' + IC.x + 'رفض</button></div>';
-    } else if (mine && x.status === 'مرفوض' && (x.type === 'permit' || x.type === 'qty' || x.type === 'exp')) {
+    } else if (mine && x.status === 'مرفوض' && (x.type === 'permit' || x.type === 'qty' || x.type === 'exp' || x.type === 'issue' || x.type === 'count')) {
       foot = '<div class="fbar"><button class="btn" data-act="go" data-to="edit/' + encodeURIComponent(x.key) + '">' + IC.edit + 'عدّل وأعد الإرسال</button></div>';
     }
     var date = x.date ? R.dateLong(new Date(x.date + 'T12:00').getTime()) : '';
@@ -178,6 +198,8 @@
     var j = R.journal(x);
     if (x.type === 'stmt') return stage(x) === 'tech' ? ['اعتماد فني لـ ' + x.id + '؟', 'يروح للمالك للاعتماد النهائي.'] : ['اعتماد نهائي لـ ' + x.id + '؟', 'الصافي (' + money(x.net) + ') يبقى مستحق الصرف.'];
     if (x.type === 'qty') return ['اعتماد ' + x.id + '؟', 'المحضر يتقفل ويدخل في مستخلص الفترة.'];
+    if (x.type === 'issue') return ['اعتماد ' + x.id + '؟', 'إذن الصرف يتقفل. الكمية متخصمة من رصيد المخزن من ساعة ما اتسجّل.'];
+    if (x.type === 'count') return ['اعتماد ' + x.id + '؟', x.qty ? 'رصيد الصنف يتسوّى بالفرق (' + (x.qty > 0 ? '+' : '−') + num(Math.abs(x.qty)) + ').' : 'الجرد مطابق للرصيد الدفتري.'];
     return ['اعتماد ' + (x.id || '') + '؟', 'المستند يتقفل' + (j ? '. قيده في اليومية: ' + j : '') + '.'];
   }
   function fail(res) { R.toast(res && res.error === 'offline' ? 'القرار محتاج نت. جرّب أول ما النت يرجع.' : 'القرار ما اتسجّلش' + (res && (res.message || res.error) ? ': ' + (res.message || res.error) : '') + '.'); }

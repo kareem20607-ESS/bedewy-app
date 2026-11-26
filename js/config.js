@@ -7,5 +7,5 @@ window.BDW_CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbwsN-4x1OFDrp8DxHe5POVRC3lPkvdLnM_kLItdQlNWGm7jGlmSg7GEQ7OqaIjA5udhQA/exec',
   WRITE_URL: 'https://script.google.com/macros/s/AKfycbwsN-4x1OFDrp8DxHe5POVRC3lPkvdLnM_kLItdQlNWGm7jGlmSg7GEQ7OqaIjA5udhQA/exec',
   PREVIEW: false,
-  BUILD: '2026-11-26.5'
+  BUILD: '2026-11-26.6'
 };

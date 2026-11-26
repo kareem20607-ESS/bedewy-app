@@ -31,6 +31,8 @@
     else if (x.type === 'exp') { r.a = x.cat || ''; r.b = x.desc || ''; r.c = x.byName || ''; }
     else if (x.type === 'voucher') { r.a = p || '—'; r.b = x.notes || x.desc || ''; r.c = x.kind || 'صرف'; }
     else if (x.type === 'stmt') { r.a = p; r.b = x.kind === 'عميل' ? 'مستخلص عميل' : 'مقاول باطن'; r.c = x.extNo || ''; }
+    else if (x.type === 'issue') { var si = R.item(x.item); r.a = x.exec && x.exec !== 'ذاتي' ? R.party(x.exec).name : 'تنفيذ ذاتي'; r.b = si.name; r.c = unitTxt(x.qty, si.unit); }
+    else if (x.type === 'count') { var sc = R.item(x.item), dq = Number(x.qty) || 0; r.a = sc.name; r.b = 'العدد الفعلي ' + unitTxt(x.counted, sc.unit); r.c = dq ? (dq > 0 ? 'زيادة ' : 'عجز ') + unitTxt(Math.abs(dq), sc.unit) : 'مطابق للدفتري'; }
     if (D.set === 'inbox') {
       r.c = x.type === 'stmt' ? (x.techOk ? 'اعتماد فني ✓ — ينتظر المالك' : 'ينتظر الاعتماد الفني') : x.type === 'exp' ? r.b : r.b + (r.c ? ' — ' + r.c : '');
       r.b = r.a; r.a = R.typeName(x);

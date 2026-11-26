@@ -66,15 +66,16 @@
   /* ---------- الأدوار ---------- */
   /* nav = الشريط السفلي، more = شاشات زيادة في القائمة الجانبية */
   var ROLES = {
-    site: { n: 'محاسب الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['new/permit', 'إذن جديد', 'truck'], ['new/qty', 'محضر جديد', 'ruler'], ['custody', 'العهدة', 'wallet'], ['mine', 'سجلاتي', 'folder']] },
+    site: { n: 'محاسب الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['new/permit', 'إذن جديد', 'truck'], ['new/qty', 'محضر جديد', 'ruler'], ['custody', 'العهدة', 'wallet'], ['mine', 'سجلاتي', 'folder']],
+      more: [['store', 'مخزن الموقع', 'box']] },
     eng: { n: 'مهندس الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['new/qty', 'محضر جديد', 'ruler'], ['mine', 'سجلاتي', 'folder'], ['archive', 'الأرشيف', 'images']],
-      more: [['stmts', 'المستخلصات', 'stmt'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
+      more: [['store', 'مخزن الموقع', 'box'], ['stmts', 'المستخلصات', 'stmt'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
     acc: { n: 'محاسب المشروع', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['stmts', 'المستخلصات', 'stmt'], ['vouchers', 'السندات', 'money'], ['parties', 'الأطراف', 'users']],
-      more: [['dash', 'لوحة المشروع', 'pie'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
+      more: [['dash', 'لوحة المشروع', 'pie'], ['store', 'مخزن الموقع', 'box'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
     owner: { n: 'المالك', greet: 'يا حاج محمد', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['dash', 'اللوحة', 'pie'], ['stmts', 'المستخلصات', 'stmt'], ['parties', 'الأطراف', 'users']],
-      more: [['vouchers', 'السندات', 'money'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
+      more: [['vouchers', 'السندات', 'money'], ['store', 'مخزن الموقع', 'box'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] },
     admin: { n: 'مدير المنظومة', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['dash', 'اللوحة', 'pie'], ['stmts', 'المستخلصات', 'stmt'], ['vouchers', 'السندات', 'money']],
-      more: [['parties', 'الأطراف', 'users'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] }
+      more: [['parties', 'الأطراف', 'users'], ['store', 'مخزن الموقع', 'box'], ['archive', 'أرشيف المستندات', 'images'], ['desk', 'العرض على الكمبيوتر', 'monitor']] }
   };
   function role() { return S.role; }
   function me() { return { role: S.role, name: (S.user && S.user.name) || ROLES[S.role].n, email: (S.user && S.user.email) || '' }; }
@@ -86,7 +87,7 @@
     if (d.user && d.user.role && ROLES[d.user.role]) S.role = d.user.role;
     IX.party = {}; (d.parties || []).forEach(function (p) { IX.party[p[0]] = { code: p[0], name: p[1], type: p[2], phone: p[3] || '' }; });
     IX.acc = {}; (d.accounts || []).forEach(function (a) { IX.acc[a[0]] = a[1]; });
-    IX.item = {}; (d.items || []).forEach(function (p) { IX.item[p[0]] = { code: p[0], name: p[1], unit: p[2] }; });
+    IX.item = {}; (d.items || []).forEach(function (p) { IX.item[p[0]] = { code: p[0], name: p[1], unit: p[2], cat: p[3] || '' }; });
     IX.boq = {}; (d.boq || []).forEach(function (p) { IX.boq[p[0]] = { code: p[0], name: p[1], unit: p[2], qty: p[3], price: p[4], done: p[5], boq: true }; });
     (d.subItems || []).forEach(function (p) { IX.boq[p[0]] = { code: p[0], name: p[1], unit: p[2], qty: null, price: null, done: null, boq: false }; });
     if (d.demo) {                     /* في التجربة: اللي اتسجّل على الجهاز ده بيفضل بعد إعادة الفتح */
@@ -105,14 +106,15 @@
   function project(code) { var c = code || S.project; return (S.data.projects || []).filter(function (x) { return x.code === c; })[0] || {}; }
   function party(c) { return IX.party[c] || { code: c, name: c || '—', type: '', phone: '' }; }
   function account(c) { return IX.acc[c] || ''; }
-  function item(c) { return IX.item[c] || { code: c, name: c || '—', unit: '' }; }
+  function item(c) { return IX.item[c] || { code: c, name: c || '—', unit: '', cat: '' }; }
+  function hasItem(c) { return !!IX.item[c]; }
   function boq(c) { return IX.boq[c] || { code: c, name: c || '—', unit: '' }; }
   function docs(f) { return (S.data.docs || []).filter(function (x) { return x.project === S.project && (!f || f(x)); }); }
   function byKey(k) { return (S.data.docs || []).filter(function (x) { return x.key === k; })[0] || null; }
   function isMine(x) { return S.data.demo ? x.by === S.role : !!x.mine; }
 
   /* قيمة المستند ونصوصه في القوائم */
-  var TYPE = { permit: 'إذن توريد', qty: 'محضر كميات', exp: 'مصروف عهدة', voucher: 'سند صرف', stmt: 'مستخلص' };
+  var TYPE = { permit: 'إذن توريد', qty: 'محضر كميات', exp: 'مصروف عهدة', voucher: 'سند صرف', stmt: 'مستخلص', issue: 'إذن صرف مخزن', count: 'جرد مخزن' };
   function typeName(x) {
     if (x.type === 'voucher' && x.kind === 'قبض') return 'سند قبض';
     if (x.type === 'stmt') return x.kind === 'عميل' ? 'مستخلص عميل' : 'مستخلص مقاول باطن';
@@ -122,10 +124,12 @@
     if (x.type === 'permit') return x.price == null ? null : x.qty * x.price;
     if (x.type === 'qty') { var b = boq(x.boq); return b.price == null ? null : x.qty * b.price * (1 - (project(x.project).discount || 0)); }
     if (x.type === 'stmt') return x.net;
+    if (x.type === 'issue' || x.type === 'count') return null;          /* حركة المخزن بالكمية، مش بالفلوس */
     return x.amount;
   }
   function title(x) {
-    var no = x.id || (x.type === 'qty' ? 'محضر' : x.type === 'exp' ? 'مصروف' : x.type === 'voucher' ? 'سند' : 'إذن') + ' بلا رقم بعد';
+    var no = x.id || (x.type === 'qty' ? 'محضر' : x.type === 'exp' ? 'مصروف' : x.type === 'voucher' ? 'سند' : x.type === 'issue' ? 'إذن صرف' : x.type === 'count' ? 'جرد' : 'إذن') + ' بلا رقم بعد';
+    if (x.type === 'issue' || x.type === 'count') return no + ' — ' + item(x.item).name;
     if (x.type === 'voucher' && !x.party) return no + ' — ' + (x.notes || x.desc || '');
     if (x.type === 'permit' || x.type === 'voucher' || x.type === 'stmt') return no + ' — ' + party(x.party).name.split(' — ')[0];
     if (x.type === 'qty') return no + ' — ' + x.boq;
@@ -135,6 +139,8 @@
     if (x.type === 'permit') { var it = item(x.item); return it.name + '‏ — ' + num(x.qty) + ' ' + it.unit; }
     if (x.type === 'qty') { var b = boq(x.boq); return b.name + '‏ — ' + num(x.qty) + ' ' + b.unit; }
     if (x.type === 'exp') return x.cat;
+    if (x.type === 'issue') { var ii = item(x.item); return num(x.qty) + ' ' + ii.unit + '‏ — ' + (x.exec && x.exec !== 'ذاتي' ? party(x.exec).name : 'تنفيذ ذاتي'); }
+    if (x.type === 'count') { var ic = item(x.item); return 'العدد الفعلي ' + num(x.counted) + ' ' + ic.unit + '‏ — ' + (x.qty ? (x.qty > 0 ? 'زيادة ' : 'عجز ') + num(Math.abs(x.qty)) : 'مطابق للدفتري'); }
     if (x.type === 'voucher') return (x.notes || x.desc || typeName(x)) + ' — ' + (x.method || '');
     if (x.type === 'stmt') {
       var nm = (x.kind === 'عميل' ? 'مستخلص عميل' : 'مستخلص') + (x.extNo && x.extNo !== 'جارٍ' ? ' رقم ' + x.extNo : ' جارٍ');
@@ -143,7 +149,7 @@
     }
     return '';
   }
-  var ICON = { permit: 'truck', qty: 'ruler', exp: 'receipt', voucher: 'money', stmt: 'stmt' };
+  var ICON = { permit: 'truck', qty: 'ruler', exp: 'receipt', voucher: 'money', stmt: 'stmt', issue: 'boxout', count: 'clipcheck' };
 
   /* ---------- أجزاء الواجهة ---------- */
   var CHIP = { 'مسجَّل': ['c-reg', 'clock'], 'معتمد': ['c-ok', 'check'], 'مرفوض': ['c-rej', 'x'], 'ملغى': ['c-void', 'x'], 'تحت المراجعة': ['c-rev', 'hourglass'], 'بانتظار المزامنة': ['c-sync', 'upload'], 'مسودة': ['c-draft', 'edit'] };
@@ -220,7 +226,7 @@
   /* رسم مستند ورقي مكان صورة العيّنة */
   function docArt(seed, kind) {
     seed = Number(seed) || 0;
-    var titles = { permit: 'إذن توريد', qty: 'محضر استلام أعمال', exp: 'إيصال نقدية' };
+    var titles = { permit: 'إذن توريد', qty: 'محضر استلام أعمال', exp: 'إيصال نقدية', issue: 'إذن صرف مخزن' };
     var bg = ['#B6AC9C', '#A7B1BC', '#C1B4A0', '#9EA8B3', '#B3A793', '#AEB6B0', '#B9B0A2', '#A9B3BD', '#BDB3A6'][seed % 9];
     var rot = [-4, 3, -2, 5, -3, 2, -1, 4, -2][seed % 9], lines = '', scr = '';
     for (var i = 0; i < 6; i++) {
@@ -290,7 +296,7 @@
     (S.data.qtyAll || []).forEach(function (q) { see(q[0]); });
     var s = String(max + 1); while (s.length < (prefix === 'SS-' || prefix === 'CS-' ? 3 : 4)) s = '0' + s; return prefix + s;
   }
-  var PREFIX = { permit: 'SP-', qty: 'Q-', exp: 'EX-' };
+  var PREFIX = { permit: 'SP-', qty: 'Q-', exp: 'EX-', issue: 'IS-', count: 'IC-' };
   /* سند الصرف لحد حد المحاسب وسند القبض بيتعتمدوا مع التسجيل (نفس قاعدة السكريبت) */
   function voucherAuto(d) { return d.kind === 'قبض' || Number(d.amount) <= (S.data.settings.voucherLimit || 0); }
   /* تطبيق العملية على البيانات المحلية (في التجربة، أو لحد ما التحديث الجاي يجيب نسخة السيرفر) */
@@ -300,6 +306,7 @@
       var d = JSON.parse(JSON.stringify(op.doc)), isV = d.type === 'voucher'; d.key = op.key;
       d.id = (res && res.id) || nextId(isV ? (d.kind === 'قبض' ? 'RV-' : 'PV-') : PREFIX[d.type]);
       d.status = isV ? ((res && res.status) || (voucherAuto(d) ? 'معتمد' : 'مسجَّل')) : 'مسجَّل';
+      if (d.type === 'count' && res && res.adj != null) d.qty = res.adj;
       d.at = op.at; d.by = LIVE ? (S.user && S.user.email) || '' : S.role; d.byRole = S.role; d.byName = me().name; d.mine = true;
       d.log = [[op.at, 'سُجّل' + (op.queuedAt ? ' بدون إنترنت' : ''), me().name], [Date.now(), 'وصل للشيت ورُقِّم ' + d.id, '']];
       if (d.type === 'qty' && S.data.qtyAll && !LIVE) {      /* في التجربة: المحضر الجديد يدخل في حساب المستخلصات */
@@ -317,6 +324,7 @@
     if (op.action === 'resubmit') {
       var x = byKey(op.target); if (!x) return null;
       for (var k in op.doc) x[k] = op.doc[k];
+      if (x.type === 'count' && res && res.adj != null) x.qty = res.adj;
       x.log = (x.log || []).slice();
       if (x.decidedAt && !x.log.some(function (l) { return /^رُفض/.test(l[1]); })) x.log.push([x.decidedAt, 'رُفض: ' + (x.reason || ''), x.decidedBy || '']);
       x.status = 'مسجَّل'; x.reason = ''; x.note = ''; x.decidedAt = null; x.decidedBy = '';
@@ -412,11 +420,12 @@
       if (isMine(x)) return false;                     /* لا أحد يعتمد مستندًا أنشأه بنفسه */
       if (x.type === 'stmt') return x.status === 'تحت المراجعة' && ((r === 'eng' && !x.techOk) || ((r === 'owner' || r === 'admin') && x.techOk));
       if (x.status !== 'مسجَّل') return false;
-      var byEng = (x.byRole || x.by) === 'eng';           /* محضر سجّله المهندس نفسه بيعتمده المالك أو المدير */
-      if (r === 'eng') return x.type === 'qty';
-      if (r === 'acc') return x.type === 'permit' || x.type === 'exp' || (x.type === 'voucher' && x.amount <= lim);
-      if (r === 'admin') return x.type === 'permit' || x.type === 'exp' || (x.type === 'voucher' && x.amount <= lim) || (x.type === 'qty' && byEng);
-      if (r === 'owner') return (x.type === 'voucher' && x.amount > lim) || (x.type === 'qty' && byEng);
+      var byEng = (x.byRole || x.by) === 'eng';           /* محضر أو إذن صرف سجّله المهندس نفسه بيعتمده المالك أو المدير */
+      var site = x.type === 'qty' || x.type === 'issue';
+      if (r === 'eng') return site;
+      if (r === 'acc') return x.type === 'permit' || x.type === 'exp' || x.type === 'count' || (x.type === 'voucher' && x.amount <= lim);
+      if (r === 'admin') return x.type === 'permit' || x.type === 'exp' || x.type === 'count' || (x.type === 'voucher' && x.amount <= lim) || (site && byEng);
+      if (r === 'owner') return (x.type === 'voucher' && x.amount > lim) || (site && byEng);
       return false;
     }).sort(function (a, b) { return a.at - b.at; });
   }
@@ -589,7 +598,7 @@
       '<div class="sect">اليوم</div><div class="minis">' +
       (r === 'eng' ? '<div class="card mini"><b>' + cnt('qty') + '</b><span>محاضر</span></div><div class="card mini"><b>' + inboxDocs().length + '</b><span>تنتظر اعتمادك</span></div>'
         : '<div class="card mini"><b>' + cnt('permit') + '</b><span>إذونات</span></div><div class="card mini"><b>' + cnt('qty') + '</b><span>محاضر</span></div><div class="card mini gold"><b>' + num(expAmt) + '</b><span>مصروفات ج</span></div>') +
-      '</div><div class="sect">آخر ما سجّلته<button class="s" data-act="go" data-to="mine">عرض الكل</button></div>' +
+      '</div>' + (R.storeCta ? R.storeCta() : '') + '<div class="sect">آخر ما سجّلته<button class="s" data-act="go" data-to="mine">عرض الكل</button></div>' +
       (recent.length ? '<div class="list boxed">' + recent.map(function (x) { return docRow(x); }).join('') + '</div>' : '<div class="card empty"><b>لم تسجّل شيئًا بعد</b>ابدأ من الأزرار في أعلى الشاشة.</div>') +
       '</main>' + nav('home');
   }
@@ -826,7 +835,7 @@
   /* ---------- اللي باقي الملفات بتستخدمه ---------- */
   var X = {
     esc: esc, num: num, money: money, short: short, iso: iso, today: today, hm: hm, when: when, ago: ago, dateLong: dateLong, dateShort: dateShort, dayName: dayName,
-    uid: uid, store: store, load: load, toast: toast, km: km, me: me, role: role, project: project, party: party, item: item, boq: boq, docs: docs, byKey: byKey,
+    uid: uid, store: store, load: load, toast: toast, km: km, me: me, role: role, project: project, party: party, item: item, hasItem: hasItem, boq: boq, docs: docs, byKey: byKey,
     isMine: isMine, value: value, title: title, sub: sub, journal: journal, chip: chip, lead: lead, gh: gh, docRow: docRow, head: head, nav: nav, strip: strip,
     go: go, back: goBack, backTo: backTo, render: render, IC: IC, inCustody: inCustody, blob: blob, docArt: docArt, photoHtml: photoHtml, fillPhotos: fillPhotos, queue: queue, outbox: outbox, pendingDocs: pendingDocs,
     decide: decide, inboxDocs: inboxDocs, openSheet: openSheet, closeSheet: closeSheet, confirmBox: confirmBox, custody: custody, overrun: overrun, post: post,

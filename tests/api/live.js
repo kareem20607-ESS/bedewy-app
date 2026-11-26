@@ -194,6 +194,58 @@ const get = (u) => fetch(u).then(r => r.json());
   ok('custody expenses register from the script', (await ap.locator('#dk-tb tr[data-k^="exp|"]').count()) > 0);
   await ap.screenshot({ path: path.join(SHOTS, 'live-07-desk.png') });
 
+  /* 6.4: مخزن الموقع وهو متوصّل: صرف من محاسب الموقع واعتماد المهندس، وجرد بفرق محسوب في السكريبت واعتماد محاسب المشروع */
+  const sign = async (page) => {
+    await page.evaluate(() => document.querySelector('#sig').scrollIntoView({ block: 'center' })); await page.waitForTimeout(150);
+    const b = await page.locator('#sig canvas').boundingBox();
+    await page.mouse.move(b.x + 40, b.y + 60); await page.mouse.down(); for (let i = 0; i < 10; i++) await page.mouse.move(b.x + 40 + i * 22, b.y + 60 + (i % 2) * 20, { steps: 2 }); await page.mouse.up();
+    await page.waitForTimeout(300);
+  };
+  await sp.evaluate(() => { location.hash = '#store'; }); await sp.waitForSelector('#st-list', { timeout: 15000 }).catch(() => { });
+  ok('store from the script: received from permits, concrete out', /100/.test(await sp.locator('[data-act="st-item"][data-code="I-P04"]').textContent().catch(() => '')) &&
+    (await sp.locator('[data-act="st-item"][data-code="I-C02"]').count()) === 0, await sp.locator('main').textContent());
+  await sp.evaluate(() => { location.hash = '#new/issue/I-P04'; }); await sp.waitForSelector('.form');
+  await sp.fill('#f-qty', '30');
+  await click(sp, '[data-act="seg"][data-f="exec"][data-v="sub"]'); await click(sp, '[data-act="sheet-pick"][data-v="S-001"]');
+  await sign(sp); await click(sp, '[data-act="save"]');
+  await sp.waitForFunction(() => /IS-0001/.test(document.querySelector('main') && document.querySelector('main').textContent), null, { timeout: 15000 }).catch(() => { });
+  ok('issue numbered by the script', /IS-0001/.test(await sp.locator('main').textContent()), await toast(sp));
+  sh = await sheet();
+  const is1 = (sh.store || []).find(r => r[0] === 'IS-0001');
+  ok('issue row in the store sheet', is1 && is1[3] === 'صرف للتنفيذ' && is1[4] === 'I-P04' && is1[7] === 30 && is1[9] === 'S-001' && is1[11] === 'مسجَّل' && is1[13] === 'سعيد الموقع', JSON.stringify(is1));
+  await sp.evaluate(() => { location.hash = '#new/count/I-P04'; }); await sp.waitForSelector('.form');
+  await sp.waitForFunction(() => /70/.test(document.getElementById('f-book').textContent), null, { timeout: 15000 }).catch(() => { });
+  ok('book balance after the issue', /70/.test(await sp.locator('#f-book').textContent()), await sp.locator('#f-book').textContent());
+  await sp.fill('#f-counted', '65'); await click(sp, '[data-act="save"]');
+  await sp.waitForFunction(() => /IC-0001/.test(document.querySelector('main') && document.querySelector('main').textContent), null, { timeout: 15000 }).catch(() => { });
+  sh = await sheet();
+  const ic1 = (sh.store || []).find(r => r[0] === 'IC-0001');
+  ok('count row: difference worked out by the script', ic1 && ic1[3] === 'جرد' && ic1[7] === -5 && ic1[8] === 65 && ic1[11] === 'مسجَّل', JSON.stringify(ic1));
+  const eng = await as('eng'), ep = eng.page;
+  await ep.goto(APP + '#inbox'); await ep.waitForSelector('.tabs', { timeout: 15000 });
+  await click(ep, '[data-act="inbox-tab"][data-t="issue"]');
+  ok('engineer inbox has the site issue', /IS-0001/.test(await ep.locator('main').textContent()));
+  await click(ep, '[data-act="quick"]'); await ep.waitForSelector('.dlg'); await click(ep, '[data-act="dlg-ok"]');
+  await ep.waitForFunction(() => /اتعتمد IS-0001/.test(document.getElementById('toast').textContent), null, { timeout: 15000 }).catch(() => { });
+  sh = await sheet();
+  ok('engineer approval written to the store sheet', ((sh.store || []).find(r => r[0] === 'IS-0001') || [])[11] === 'معتمد');
+  await ap.setViewportSize({ width: 390, height: 844 });
+  await ap.evaluate(() => { location.hash = '#inbox'; }); await ap.waitForSelector('.tabs');
+  await click(ap, '.head [data-act="sync"]');
+  await ap.waitForFunction(() => /الجرد/.test(document.querySelector('.tabs').textContent), null, { timeout: 15000 }).catch(() => { });
+  await click(ap, '[data-act="inbox-tab"][data-t="count"]');
+  await ap.waitForFunction(() => /IC-0001/.test(document.querySelector('main').textContent), null, { timeout: 15000 }).catch(() => { });
+  ok('accountant inbox has the count with its difference', /IC-0001/.test(await ap.locator('main').textContent()) && /عجز 5/.test(await ap.locator('main').textContent()), await ap.locator('main').textContent());
+  await ap.locator('[data-act="doc"]', { hasText: 'IC-0001' }).first().click(); await ap.waitForSelector('.fbar');
+  await click(ap, '.fbar [data-act="approve"]'); await click(ap, '[data-act="dlg-ok"]');
+  await ap.waitForFunction(() => /اتعتمد IC-0001/.test(document.getElementById('toast').textContent), null, { timeout: 15000 }).catch(() => { });
+  sh = await sheet();
+  ok('accountant approval of the count written', ((sh.store || []).find(r => r[0] === 'IC-0001') || [])[11] === 'معتمد');
+  await sp.evaluate(() => { location.hash = '#store/I-P04'; }); await click(sp, '.head [data-act="sync"]');
+  await sp.waitForFunction(() => document.querySelector('.sbig') && /^65/.test(document.querySelector('.sbig').textContent), null, { timeout: 15000 }).catch(() => { });
+  ok('item balance from the script after both decisions', /^65/.test((await sp.locator('.sbig').textContent().catch(() => '')) || ''), await sp.locator('.sbig').textContent().catch(() => ''));
+  await sp.screenshot({ path: path.join(SHOTS, 'live-08-store-item.png') });
+
   ok('no JS errors', errs.length === 0, errs.join(' | '));
   results.forEach(r => console.log(r[0], '-', r[1], r[0] === 'FAIL' && r[2] ? '— ' + r[2].slice(0, 300) : ''));
   console.log(results.filter(r => r[0] === 'FAIL').length + ' failed of ' + results.length);

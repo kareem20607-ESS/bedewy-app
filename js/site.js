@@ -1,4 +1,4 @@
-/* شاشات الموقع: إذن توريد (2.1)، محضر كميات (2.2)، سجلاتي (2.3)، العهدة ومصروف جديد (2.4).
+/* شاشات الموقع: إذن توريد (2.1)، محضر كميات (2.2)، سجلاتي (2.3)، العهدة ومصروف جديد (2.4)، وصرف مواد وجرد المخزن (6.4).
    النموذج بيتحفظ مسودة على الجهاز أول بأول، والحفظ بيحط المستند في طابور الإرسال بمفتاح فريد. */
 (window.BDW_EXT = window.BDW_EXT || []).push(function (R) {
   'use strict';
@@ -7,7 +7,8 @@
   var F = null;                          /* النموذج المفتوح */
   var asked = null;                      /* مفتاح النموذج اللي طلبنا له الموقع */
   var CATS = ['وقود', 'نقل', 'إعاشة', 'أدوات', 'صيانة', 'أخرى'];
-  var FORM = { permit: 'إذن توريد جديد', qty: 'محضر كميات جديد', exp: 'مصروف جديد' };
+  var FORM = { permit: 'إذن توريد جديد', qty: 'محضر كميات جديد', exp: 'مصروف جديد', issue: 'صرف مواد للتنفيذ', count: 'جرد صنف' };
+  function storeType(t) { return t === 'issue' || t === 'count'; }
 
   /* ---------- حالة النموذج ---------- */
   function fresh(type) {
@@ -15,11 +16,20 @@
     if (type === 'permit') { f.party = ''; f.item = ''; f.qty = ''; f.price = ''; f.priceSet = false; f.paperNo = ''; f.sign = ''; }
     if (type === 'qty') { f.boq = ''; f.qty = ''; f.kind = 'حالية'; f.exec = 'ذاتي'; }
     if (type === 'exp') { f.cat = ''; f.desc = ''; f.amount = ''; }
+    if (type === 'issue') { f.item = ''; f.qty = ''; f.exec = 'ذاتي'; f.boq = ''; f.sign = ''; }
+    if (type === 'count') { f.item = ''; f.counted = ''; }
     return f;
   }
   function draftKey(t) { return 'bdw_draft_' + t; }
   function saveDraft() { if (F && !F.edit) { var c = JSON.parse(JSON.stringify(F)); c.errs = {}; R.store(draftKey(F.type), c); } }
-  function open(type, editKey) {
+  /* preset: صنف جاي من شاشة الصنف في المخزن؛ بيتطبّق مرة واحدة، وبعدها اختيار المستخدم هو اللي يمشي */
+  function preset(f, code) {
+    if (!code || f.presetFrom === code) return f;
+    f.presetFrom = code;
+    if (f.item !== code) { f.item = code; f.qty = ''; f.counted = ''; }
+    return f;
+  }
+  function open(type, editKey, pre) {
     if (editKey) {
       var x = R.byKey(editKey); if (!x) return null;
       var f = fresh(x.type); for (var k in f) if (x[k] !== undefined && k !== 'key' && k !== 'errs') f[k] = x[k];
@@ -28,17 +38,17 @@
       if (F && F.edit === editKey) return F;
       return (F = f);
     }
-    if (F && F.type === type && !F.edit) return F;
+    if (F && F.type === type && !F.edit) return storeType(type) ? preset(F, pre) : F;
     var d = R.load(draftKey(type));
     F = d && d.type === type ? d : fresh(type);
     F.errs = {};
-    return F;
+    return storeType(type) ? preset(F, pre) : F;
   }
 
   /* ---------- أدوات الحقول ---------- */
   function lab(t, req, tag) { return '<div class="fl">' + t + (req ? '<span class="rq">*</span>' : '') + (tag ? '<span class="tag">' + tag + '</span>' : '') + '</div>'; }
   function err(k) { return F.errs[k] ? '<div class="fe" id="e-' + k + '">' + IC.alert + esc(F.errs[k]) + '</div>' : ''; }
-  function refField(k, label, val, sub, ph, req, tag) {
+  function refField(k, label, val, sub, ph, req, tag) {   /* tag: كلمة جنب العنوان زي «اختياري» */
     return '<div class="fld" id="w-' + k + '">' + lab(label, req, tag) + '<button type="button" class="fb' + (F.errs[k] ? ' err' : '') + '" data-act="pick" data-f="' + k + '">' + IC.search +
       (val ? '<span class="v">' + esc(val) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>' : '<span class="plh">' + esc(ph) + '</span>') + IC.down + '</button>' + err(k) + '</div>';
   }
@@ -63,12 +73,17 @@
       return '<button type="button" class="' + (F[k] === v ? 'on' : '') + '" data-act="seg" data-f="' + k + '" data-v="' + esc(v) + '">' + esc(t) + '</button>';
     }).join('') + '</div>' + err(k) + '</div>';
   }
-  function photoField(label, kind) {
+  function photoField(label, kind, optional) {
     var input = '<input class="file-in" type="file" id="f-photo-in" accept="image/*" capture="environment">';
     if (F.photo) {
-      return '<div class="fld" id="w-photo">' + lab(label, true) + '<label for="f-photo-in" class="photo" style="display:block" data-photo="' + esc(F.photo) + '" data-kind="' + kind + '" data-ov="' + esc('<span class="ov">' + IC.camera + 'إعادة التصوير</span>') + '"></label>' + input + '</div>';
+      return '<div class="fld" id="w-photo">' + lab(label, !optional) + '<label for="f-photo-in" class="photo" style="display:block" data-photo="' + esc(F.photo) + '" data-kind="' + kind + '" data-ov="' + esc('<span class="ov">' + IC.camera + 'إعادة التصوير</span>') + '"></label>' + input + '</div>';
     }
-    return '<div class="fld" id="w-photo">' + lab(label, true) + '<label for="f-photo-in" class="photo-empty' + (F.errs.photo ? ' err' : '') + '">' + IC.camera + '<span>صوّر ' + (kind === 'exp' ? 'الإيصال' : kind === 'qty' ? 'المحضر' : 'الإذن') + '</span><small>بالكاميرا أو من المعرض</small></label>' + input + err('photo') + '</div>';
+    return '<div class="fld" id="w-photo">' + lab(label, !optional, optional ? 'اختياري' : '') + '<label for="f-photo-in" class="photo-empty' + (F.errs.photo ? ' err' : '') + '">' + IC.camera + '<span>صوّر ' +
+      (kind === 'exp' ? 'الإيصال' : kind === 'qty' ? 'المحضر' : kind === 'issue' ? 'إذن الصرف الورقي' : 'الإذن') + '</span><small>بالكاميرا أو من المعرض</small></label>' + input + err('photo') + '</div>';
+  }
+  function signField() {
+    return '<div class="fld" id="w-sign">' + lab('توقيع المستلم', true) + '<div class="sig' + (F.errs.sign ? ' err' : '') + '" id="sig"><canvas></canvas><div class="base"></div><div class="hint"' + (F.sign ? ' hidden' : '') + '>وقّع هنا بإصبعك</div>' +
+      '<button type="button" class="clr" data-act="sig-clear">' + IC.eraser + 'امسح وأعد التوقيع</button></div>' + err('sign') + '</div>';
   }
   function locField() {
     return '<div class="fld">' + lab('الموقع', false, 'تلقائي') + '<div class="locbox" id="f-loc">' + locHtml() + '</div></div>';
@@ -126,13 +141,23 @@
     return '';
   }
 
+  /* ---------- قواعد المخزن ---------- */
+  function storeLeft() { return F.item ? R.storeBal(F.item) - (Number(F.qty) || 0) : null; }
+  function diffHtml() {
+    if (!F.item || String(F.counted).trim() === '' || isNaN(Number(F.counted))) return '';
+    var it = R.item(F.item), d = Math.round((Number(F.counted) - R.storeBal(F.item)) * 1000) / 1000;
+    if (!d) return '<div class="alert ok">' + IC.ok + '<div>العدد الفعلي مطابق للرصيد الدفتري.</div></div>';
+    return '<div class="alert ' + (d < 0 ? 'warn' : 'info') + '">' + IC[d < 0 ? 'alert' : 'info'] + '<div>' + (d < 0 ? 'عجز' : 'زيادة') + ' <b>' + num(Math.abs(d)) + ' ' + esc(it.unit) +
+      '</b> عن الرصيد الدفتري. الرصيد هيتسوّى بالفرق بعد اعتماد محاسب المشروع.</div></div>';
+  }
+
   /* ---------- قواعد المصروف ---------- */
   function expLeft() { return R.custody().left; }   /* المرفوض مش محسوب في المصروف، فالتعديل عليه ما يرجّعش حاجة */
 
   /* ---------- رسم النموذج ---------- */
   function viewForm(r) {
     var type = r.name === 'edit' ? null : r.sub;
-    var f = r.name === 'edit' ? open(null, r.sub) : open(type);
+    var f = r.name === 'edit' ? open(null, r.sub) : FORM[type] ? open(type, null, r.arg) : null;
     if (!f) return R.head({ title: 'مستند', back: true }) + '<main class="view"><div class="empty"><b>المستند ده مش موجود</b></div></main>';
     var body = '';
     if (F.edit) body += '<div class="alert err" style="margin:12px 14px 0">' + IC.bad + '<div><b>رفضه ' + esc(F.decidedBy || 'المراجع') + ': ' + esc(F.reason || '') + '</b>' + (F.note ? '<br>«' + esc(F.note) + '»' : '') + '</div></div>';
@@ -145,9 +170,7 @@
         '<div class="two">' + numField('qty', 'الكمية', it ? it.unit : '', true) + numField('price', 'سعر الوحدة', 'ج', true, lp != null ? 'آخر معتمد ' + money(lp) : '') + '</div>' +
         '<div id="f-pricewarn">' + priceWarn() + '</div>' +
         autoField('الإجمالي', 'f-total', permitTotal() != null ? money(permitTotal()) : '—', 'تلقائي') + dateField() +
-        photoField('صورة الإذن', 'permit') + textField('paperNo', 'رقم الإذن الورقي', false, 'اختياري') +
-        '<div class="fld" id="w-sign">' + lab('توقيع المستلم', true) + '<div class="sig' + (F.errs.sign ? ' err' : '') + '" id="sig"><canvas></canvas><div class="base"></div><div class="hint"' + (F.sign ? ' hidden' : '') + '>وقّع هنا بإصبعك</div>' +
-        '<button type="button" class="clr" data-act="sig-clear">' + IC.eraser + 'امسح وأعد التوقيع</button></div>' + err('sign') + '</div>' +
+        photoField('صورة الإذن', 'permit') + textField('paperNo', 'رقم الإذن الورقي', false, 'اختياري') + signField() +
         locField() + textField('notes', 'ملاحظات', false, 'مثلًا: تفريغ صباحي — عربية 16 م3', true) +
         (F.edit ? '' : '<div class="fh" style="text-align:center;margin:4px 0 10px">' + IC.hash + ' رقم الإذن بيتحدد في الشيت بعد الإرسال</div>') + '</div>';
     } else if (F.type === 'qty') {
@@ -160,6 +183,24 @@
         '<div id="f-over">' + qtyAlert() + '</div>' +
         '<div class="two">' + autoField('سعر الجهاز', 'f-cprice', c.price != null ? num(c.price) + ' ج' : '—', 'بعد الخصم ' + num((R.project().discount || 0) * 100) + '%') + autoField('القيمة', 'f-value', c.value != null ? money(c.value) : '—') + '</div>' +
         dateField() + photoField('صورة المحضر', 'qty') + locField() + textField('notes', 'ملاحظات', false, '', true) + '</div>';
+    } else if (F.type === 'issue') {
+      var si = F.item ? R.item(F.item) : null, sb = F.item ? R.storeBal(F.item) : 0, sbq = F.boq ? R.boq(F.boq) : null, lft = storeLeft();
+      body += '<div class="form">' + autoField('المشروع', 'f-proj', esc(R.project().short || ''), 'من المشروع الحالي') +
+        (R.storeOn() ? '' : '<div class="alert err">' + IC.bad + '<div>المخزن مش متفعّل للمشروع ده.</div></div>') +
+        refField('item', 'الصنف', si ? si.code + ' — ' + si.name : '', si ? 'الرصيد في المخزن: ' + num(sb) + ' ' + si.unit : '', 'اختار الصنف من المخزن', true) +
+        numField('qty', 'الكمية المنصرفة', si ? si.unit : '', true, si ? 'الرصيد بعد الصرف: <b id="f-left" style="color:' + (lft < 0 ? 'var(--red)' : 'var(--green)') + '">' + num(lft) + '</b> ' + esc(si.unit) : '') +
+        seg('exec', 'المستلم', [['ذاتي', 'تنفيذ ذاتي'], [F.exec !== 'ذاتي' ? F.exec : 'sub', 'مقاول باطن']], '', true) +
+        (F.exec !== 'ذاتي' ? refField('sub', 'المقاول', F.exec && F.exec !== 'sub' ? F.exec + ' — ' + R.party(F.exec).name : '', '', 'اختار المقاول', true) : '') +
+        refField('boq', 'بند المقايسة', sbq ? sbq.code + ' — ' + sbq.name : '', '', 'البند اللي المواد رايحة له', false, 'اختياري') +
+        dateField() + signField() + photoField('صورة إذن الصرف', 'issue', true) + locField() + textField('notes', 'ملاحظات', false, 'مثلًا: الشارع 4 — الوصلات المنزلية', true) + '</div>';
+    } else if (F.type === 'count') {
+      var ci = F.item ? R.item(F.item) : null, pendC = F.item && R.storePendingCount(F.item, F.edit);
+      body += '<div class="form">' + autoField('المشروع', 'f-proj', esc(R.project().short || ''), 'من المشروع الحالي') +
+        (R.storeOn() ? '' : '<div class="alert err">' + IC.bad + '<div>المخزن مش متفعّل للمشروع ده.</div></div>') +
+        refField('item', 'الصنف', ci ? ci.code + ' — ' + ci.name : '', ci && ci.cat ? ci.cat : '', 'اختار الصنف اللي بتعدّه', true) +
+        (pendC ? '<div class="alert err">' + IC.bad + '<div>فيه جرد للصنف ده مستني اعتماد محاسب المشروع. الجرد الجاي بعد القرار.</div></div>' : '') +
+        '<div class="two">' + autoField('الرصيد الدفتري', 'f-book', ci ? num(R.storeBal(F.item)) + ' ' + esc(ci.unit) : '—', 'تلقائي') + numField('counted', 'العدد الفعلي', ci ? ci.unit : '', true) + '</div>' +
+        '<div id="f-diff">' + diffHtml() + '</div>' + dateField() + locField() + textField('notes', 'ملاحظات', false, 'مثلًا: جرد افتتاحي، أو سبب الفرق', true) + '</div>';
     } else {
       var left = expLeft();
       body += '<div class="form">' + dateField() + seg('cat', 'التصنيف', CATS.map(function (x) { return [x]; }), 'g3', true) +
@@ -167,7 +208,7 @@
         numField('amount', 'المبلغ', 'ج', true, 'المتبقي في العهدة بعد هذا المصروف: <b style="color:var(--green)" id="f-left">' + money(left - (Number(F.amount) || 0)) + '</b>') +
         photoField('صورة الإيصال', 'exp') + '</div>';
     }
-    var saveT = F.edit ? 'عدّل وأعد الإرسال' : F.type === 'permit' ? 'حفظ الإذن' : F.type === 'qty' ? 'حفظ المحضر' : 'حفظ المصروف';
+    var saveT = F.edit ? 'عدّل وأعد الإرسال' : F.type === 'permit' ? 'حفظ الإذن' : F.type === 'qty' ? 'حفظ المحضر' : F.type === 'issue' ? 'حفظ إذن الصرف' : F.type === 'count' ? 'حفظ الجرد' : 'حفظ المصروف';
     return R.head({ title: F.edit ? 'تعديل ' + ((R.byKey(F.edit) || {}).id || '') : FORM[F.type], back: true, noSync: true }) +
       '<main class="view form-view">' + body + '</main>' +
       '<div class="fbar"><button class="btn" data-act="save">' + IC[F.edit ? 'send' : 'check'] + saveT + '</button><button class="btn out fit" data-act="cancel">إلغاء</button></div>';
@@ -179,6 +220,17 @@
       return R.openSheet({ title: 'اختار المورد', value: F.party, items: S.data.parties.filter(function (p) { return p[2] === 'مورد'; }).map(function (p) {
         return { v: p[0], code: p[0], name: p[1], sub: (S.data.supplies[p[0]] || []).length + ' صنف' };
       }), onPick: function (v) { if (F.party !== v) { F.party = v; F.item = ''; F.price = ''; F.priceSet = false; } delete F.errs.party; afterPick(); } });
+    }
+    if (k === 'item' && storeType(F.type)) {
+      var T = R.storeTotals(), codes = R.storeItems();
+      if (F.type === 'issue') codes = codes.filter(function (c) { return T[c] && T[c].bal > 1e-9; });
+      if (!codes.length) return R.toast(F.type === 'issue' ? 'مفيش أصناف ليها رصيد في المخزن.' : 'مفيش أصناف للجرد.');
+      codes.sort(function (a, b) { return (T[a] ? 0 : 1) - (T[b] ? 0 : 1) || R.item(a).name.localeCompare(R.item(b).name, 'ar'); });
+      return R.openSheet({ title: F.type === 'issue' ? 'اختار الصنف من المخزن' : 'اختار الصنف للجرد', value: F.item, ph: 'ابحث بالكود أو الاسم', items: codes.map(function (c) {
+        var it = R.item(c), o = T[c];
+        return { v: c, code: c, name: it.name, sub: it.cat || '', end: o ? num(o.bal) + ' ' + it.unit : 'مفيش حركة',
+          endCls: o && o.state === 'low' ? 'gold' : o && (o.state === 'empty' || o.state === 'neg') ? 'red' : '' };
+      }), onPick: function (v) { if (F.item !== v) { F.item = v; F.qty = ''; F.counted = ''; } delete F.errs.item; delete F.errs.qty; delete F.errs.counted; afterPick(); } });
     }
     if (k === 'item') {
       if (!F.party) return R.toast('اختار المورد الأول.');
@@ -194,15 +246,17 @@
       } });
     }
     if (k === 'boq') {
-      return R.openSheet({ title: 'اختار البند', value: F.boq, ph: 'ابحث في بنود المقايسة', items: Object.keys(Object.assign({}, idx())).map(function (c) {
+      var bl = Object.keys(Object.assign({}, idx())).map(function (c) {
         var b = R.boq(c), pct = b.qty ? b.done / b.qty : null;
         return { v: c, code: c, name: b.name, sub: b.qty ? 'المنفّذ ' + num(b.done) + ' من ' + num(b.qty) + ' ' + b.unit : 'بند عقد باطن', end: pct != null ? num(pct * 100, 0) + '%' + (pct > 1 ? ' تجاوز' : '') : '', endCls: pct > 1 ? 'red' : pct > 0.9 ? 'gold' : '' };
-      }), onPick: function (v) { F.boq = v; delete F.errs.boq; afterPick(); } });
+      });
+      if (F.type === 'issue') bl.unshift({ v: '', code: '—', name: 'بدون بند', sub: 'المواد مش لبند معيّن' });
+      return R.openSheet({ title: F.type === 'issue' ? 'البند اللي المواد رايحة له' : 'اختار البند', value: F.boq, ph: 'ابحث في بنود المقايسة', items: bl, onPick: function (v) { F.boq = v; delete F.errs.boq; afterPick(); } });
     }
     if (k === 'sub') {
       return R.openSheet({ title: 'اختار المقاول', value: F.exec, search: true, items: S.data.parties.filter(function (p) { return p[2] === 'مقاول باطن'; }).map(function (p) {
         var rate = F.boq ? S.data.rates[p[0] + '|' + F.boq] : undefined;
-        return { v: p[0], code: p[0], name: p[1], sub: F.boq ? (rate != null ? 'فئته لهذا البند ' + money(rate) : 'لا فئة لهذا البند في عقده') : '' };
+        return { v: p[0], code: p[0], name: p[1], sub: F.type === 'qty' && F.boq ? (rate != null ? 'فئته لهذا البند ' + money(rate) : 'لا فئة لهذا البند في عقده') : '' };
       }), onPick: function (v) { F.exec = v; delete F.errs.sub; afterPick(); } });
     }
   }
@@ -226,7 +280,7 @@
 
   /* ---------- التوقيع ---------- */
   function sigAttach() {
-    var box = $('#sig'); if (!box || !F || F.type !== 'permit') return;
+    var box = $('#sig'); if (!box || !F || (F.type !== 'permit' && F.type !== 'issue')) return;
     var cv = box.querySelector('canvas'), dpr = window.devicePixelRatio || 1, rect = cv.getBoundingClientRect();
     cv.width = Math.round(rect.width * dpr); cv.height = Math.round(rect.height * dpr);
     var g = cv.getContext('2d'); g.lineWidth = 2.4 * dpr; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#14213D';
@@ -260,6 +314,22 @@
       else if (F.kind === 'تراكمي' && qtyCalc().cur <= 0) e.qty = 'التراكمي لازم يكون أكبر من المنفّذ قبل كده';
       if (F.exec !== 'ذاتي' && (!F.exec || F.exec === 'sub')) e.sub = 'اختار المقاول';
       if (!F.photo) e.photo = 'صوّر المحضر قبل الحفظ؛ الصورة إجبارية';
+    } else if (F.type === 'issue') {
+      if (!R.storeOn()) e.item = 'المخزن مش متفعّل للمشروع ده';
+      else if (!F.item) e.item = 'اختار الصنف';
+      var sb = F.item ? R.storeBal(F.item) : 0;
+      if (!(q > 0)) e.qty = 'اكتب كمية أكبر من صفر';
+      else if (F.item && q > sb + 1e-9) e.qty = 'الكمية أكبر من الرصيد (' + num(sb) + ' ' + R.item(F.item).unit + ')';
+      if (F.exec !== 'ذاتي' && (!F.exec || F.exec === 'sub')) e.sub = 'اختار المقاول';
+      if (!F.sign) e.sign = 'خلّي المستلم يوقّع';
+      if (!e.date && R.storeStart() && F.date < R.storeStart()) e.date = 'التاريخ قبل بداية المخزن (' + R.storeStart() + ')';
+    } else if (F.type === 'count') {
+      if (!R.storeOn()) e.item = 'المخزن مش متفعّل للمشروع ده';
+      else if (!F.item) e.item = 'اختار الصنف';
+      else if (R.storePendingCount(F.item, F.edit)) e.item = 'فيه جرد للصنف ده مستني الاعتماد';
+      var cn = String(F.counted).trim() === '' ? NaN : Number(F.counted);
+      if (!(cn >= 0)) e.counted = 'اكتب العدد الفعلي (صفر أو أكتر)';
+      if (!e.date && R.storeStart() && F.date < R.storeStart()) e.date = 'التاريخ قبل بداية المخزن (' + R.storeStart() + ')';
     } else {
       if (!F.cat) e.cat = 'اختار التصنيف';
       if (!String(F.desc || '').trim()) e.desc = 'اكتب البيان';
@@ -281,6 +351,8 @@
     if (F.type === 'permit') { d.party = F.party; d.item = F.item; d.qty = Number(F.qty); d.price = Number(F.price); d.paperNo = String(F.paperNo || '').trim(); d.sign = F.sign; }
     if (F.type === 'qty') { var c = qtyCalc(); d.boq = F.boq; d.qty = c.cur; d.kind = F.kind; d.exec = F.exec; if (F.kind === 'تراكمي') d.cumulative = Number(F.qty); }
     if (F.type === 'exp') { d.cat = F.cat; d.desc = String(F.desc).trim(); d.amount = Number(F.amount); }
+    if (F.type === 'issue') { d.item = F.item; d.qty = Number(F.qty); d.exec = F.exec; d.boq = F.boq || ''; d.sign = F.sign; }
+    if (F.type === 'count') { d.item = F.item; d.counted = Number(F.counted); d.qty = Math.round((d.counted - R.storeBal(F.item)) * 1000) / 1000; }
     var op = { action: F.edit ? 'resubmit' : 'submit', key: F.edit ? R.uid() : F.key, target: F.edit || null, at: Date.now(), doc: d };
     if (navigator.onLine === false) op.queuedAt = Date.now();
     var type = F.type, was = F.edit;
@@ -288,7 +360,7 @@
     if (!was) R.store(draftKey(type), null);
     F = null;
     R.toast(navigator.onLine === false ? 'اتحفظ على الجهاز، وهيتبعت لما النت يرجع.' : was ? 'التعديل في الطريق للمراجع…' : 'اتحفظ، وبيتبعت للشيت دلوقتي…');
-    if (type !== 'exp') S.tab.mine = type;              /* «سجلاتي» تفتح على نوع المستند اللي اتحفظ */
+    if (type !== 'exp') S.tab.mine = storeType(type) ? 'store' : type;   /* «سجلاتي» تفتح على نوع المستند اللي اتحفظ */
     R.backTo(type === 'exp' ? 'custody' : 'mine');      /* النموذج ما يفضلش في الرجوع بعد الحفظ */
   }
 
@@ -296,19 +368,22 @@
   function viewMine() {
     var tab = S.tab.mine || (R.role() === 'eng' ? 'qty' : 'permit');
     var types = R.role() === 'eng' ? [['qty', 'المحاضر']] : [['permit', 'الإذونات'], ['qty', 'المحاضر'], ['exp', 'المصروفات']];
+    var inTab = function (x, t) { return t === 'store' ? storeType(x.type) : x.type === t; };
+    if (R.storeOn() || R.docs(function (x) { return R.isMine(x) && storeType(x.type); }).length || R.pendingDocs().some(function (x) { return storeType(x.type); })) types.push(['store', 'المخزن']);
     if (!types.some(function (t) { return t[0] === tab; })) tab = types[0][0];
-    var mine = R.docs(function (x) { return R.isMine(x) && x.type === tab; }), pend = R.pendingDocs().filter(function (x) { return x.type === tab; });
+    var mine = R.docs(function (x) { return R.isMine(x) && inTab(x, tab); }), pend = R.pendingDocs().filter(function (x) { return inTab(x, tab); });
     var rej = mine.filter(function (x) { return x.status === 'مرفوض'; }), reg = mine.filter(function (x) { return x.status === 'مسجَّل'; }).sort(function (a, b) { return a.at - b.at; }),
       ok = mine.filter(function (x) { return x.status === 'معتمد'; }).sort(function (a, b) { return (b.decidedAt || b.at) - (a.decidedAt || a.at); });
-    var noun = { permit: 'إذونات', qty: 'محاضر', exp: 'مصروفات' }[tab];
+    var noun = { permit: 'إذونات', qty: 'محاضر', exp: 'مصروفات', store: 'صرف أو جرد' }[tab];
     var body = '';
     if (pend.length) body += R.gh('بانتظار المزامنة', pend.length, '', navigator.onLine === false ? 'تُرسل عند الاتصال' : 'جارٍ الإرسال') + '<div class="list">' + pend.map(function (x) { return R.docRow(x); }).join('') + '</div>';
     if (rej.length) body += R.gh('مرفوض — يحتاج تعديلك', rej.length, 'red') + '<div class="list">' + rej.map(function (x) { return R.docRow(x); }).join('') + '</div>';
     if (reg.length) body += R.gh('مسجَّل — بانتظار الاعتماد', reg.length, 'gold', 'الأقدم أولًا') + '<div class="list">' + reg.map(function (x) { return R.docRow(x, { noChip: true }); }).join('') + '</div>';
     if (ok.length) body += R.gh('معتمد', ok.length, 'green', 'مقفول للعرض') + '<div class="list">' + ok.slice(0, 20).map(function (x) { return R.docRow(x, { noChip: true }); }).join('') + '</div>';
-    if (!body) body = '<div class="empty"><b>لم تسجّل ' + noun + ' بعد</b>كل ما تسجّله يظهر هنا بحالته حتى يُعتمد. ابدأ من «' + (tab === 'permit' ? 'إذن جديد' : tab === 'qty' ? 'محضر جديد' : 'العهدة') + '» في الشريط السفلي.</div>';
+    if (!body) body = '<div class="empty"><b>لم تسجّل ' + noun + ' بعد</b>كل ما تسجّله يظهر هنا بحالته حتى يُعتمد. ' + (tab === 'store' ? 'ابدأ من «مخزن الموقع» في القائمة.' :
+      'ابدأ من «' + (tab === 'permit' ? 'إذن جديد' : tab === 'qty' ? 'محضر جديد' : 'العهدة') + '» في الشريط السفلي.') + '</div>';
     return R.head({ title: 'سجلاتي' }) + '<div class="tabs" role="tablist">' + types.map(function (t) {
-      var n = R.pendingDocs().filter(function (x) { return x.type === t[0]; }).length + R.docs(function (x) { return R.isMine(x) && x.type === t[0] && x.status === 'مرفوض'; }).length;
+      var n = R.pendingDocs().filter(function (x) { return inTab(x, t[0]); }).length + R.docs(function (x) { return R.isMine(x) && inTab(x, t[0]) && x.status === 'مرفوض'; }).length;
       return '<button role="tab" class="' + (t[0] === tab ? 'on' : '') + '" data-act="mine-tab" data-t="' + t[0] + '">' + t[1] + (n ? '<span class="cnt">' + n + '</span>' : '') + '</button>';
     }).join('') + '</div><main class="view flush">' + body + '</main>' + R.nav('mine');
   }
@@ -364,13 +439,15 @@
   R.inputs.push(function (e) {
     var k = e.target.getAttribute && e.target.getAttribute('data-f'); if (!k || !F) return false;
     var v = e.target.value;
-    if (k === 'qty' || k === 'price' || k === 'amount') v = v.replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); }).replace(/[^\d.]/g, '');
+    if (k === 'qty' || k === 'price' || k === 'amount' || k === 'counted') v = v.replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); }).replace(/[^\d.]/g, '');
     if (v !== e.target.value) e.target.value = v;
     F[k] = v; if (k === 'price') F.priceSet = true;
     if (F.errs[k]) { delete F.errs[k]; var w = document.getElementById('e-' + k); if (w) w.remove(); var fb = e.target.closest('.fb'); if (fb) fb.classList.remove('err'); }
     if (F.type === 'permit') { var t = $('#f-total'); if (t) t.textContent = permitTotal() != null ? money(permitTotal()) : '—'; var pw = $('#f-pricewarn'); if (pw && (k === 'price')) pw.innerHTML = priceWarn(); }
     if (F.type === 'qty') { var c = qtyCalc(), ov = $('#f-over'), fv = $('#f-value'); if (ov) ov.innerHTML = qtyAlert(); if (fv) fv.textContent = c.value != null ? money(c.value) : '—'; }
     if (F.type === 'exp') { var l = $('#f-left'); if (l) { var left = expLeft() - (Number(F.amount) || 0); l.textContent = money(left); l.style.color = left < 0 ? 'var(--red)' : 'var(--green)'; } }
+    if (F.type === 'issue') { var sl = $('#f-left'); if (sl) { var lf = storeLeft(); sl.textContent = num(lf); sl.style.color = lf < 0 ? 'var(--red)' : 'var(--green)'; } }
+    if (F.type === 'count') { var df = $('#f-diff'); if (df) df.innerHTML = diffHtml(); }
     saveDraft(); return true;
   });
   R.changes.push(function (e) {
