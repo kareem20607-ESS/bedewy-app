@@ -108,11 +108,17 @@
       kv.push(['التاريخ', x.date]);
     }
     if (x.type === 'exp') kv = [['التصنيف', x.cat], ['المبلغ', money(x.amount)], ['التاريخ', x.date], ['العهدة', 'رقم ' + ((S.data.custody || {}).no || 1)]];
-    if (x.type === 'voucher') kv = [['المبلغ', money(x.amount)], ['طريقة الدفع', x.method || '—'], ['من', x.from || '—'], ['الحساب', x.account || '—']];
+    if (x.type === 'voucher') {
+      kv = [['المبلغ', money(x.amount)], ['طريقة الدفع', x.method || '—'], [x.kind === 'قبض' ? 'إلى' : 'من', x.from || '—'],
+        ['الحساب', x.account ? x.account + (R.account(x.account) ? ' — ' + R.account(x.account) : '') : '—']];
+      if (x.ref) kv.push(['المرجع', x.ref]);
+      kv.push(['التاريخ', x.date || '—']);
+    }
     if (x.type === 'stmt') kv = [['إجمالي الأعمال', money(x.gross)], ['الصافي المستحق', money(x.net)], ['المدفوع', x.paid != null ? money(x.paid) : '—'], ['المتبقي', x.paid != null ? money(x.net - x.paid) : '—']];
     return '<div class="kv2">' + kv.map(function (k) { return '<div><div class="k">' + k[0] + '</div><div class="v">' + esc(k[1]) + '</div></div>'; }).join('') + '</div>';
   }
   function heading(x) {
+    if (x.type === 'voucher' && !x.party) return x.notes || x.desc || R.typeName(x);
     if (x.type === 'permit' || x.type === 'voucher' || x.type === 'stmt') return R.party(x.party).name;
     if (x.type === 'qty') return R.boq(x.boq).name;
     return x.desc;
@@ -124,6 +130,7 @@
       if (p) return R.head({ title: 'بانتظار المزامنة', back: true }) + '<main class="view"><div class="list boxed">' + R.docRow(p) + '</div><div class="alert info" style="margin-top:10px">' + IC.upload + '<div>المستند محفوظ على الجهاز وهيتبعت أول ما النت يوصل، وبعدها ياخد رقمه من الشيت.</div></div></main>' + R.nav('');
       return R.head({ title: 'مستند', back: true }) + '<main class="view"><div class="empty"><b>المستند ده مش موجود</b>ممكن يكون اتلغى أو تبع مشروع تاني.</div></main>' + R.nav('');
     }
+    if (x.type === 'stmt' && R.views.stmt) return R.views.stmt({ name: 'stmt', sub: x.id, viaDoc: true });   /* المستخلص بشاشته الكاملة (4.1) */
     var decide = canDecide(x), mine = R.isMine(x), st = stage(x);
     var hero = x.photo ? '<button class="dhero" data-act="zoom" data-ref="' + esc(x.photo) + '" data-kind="' + x.type + '" data-photo="' + esc(x.photo) + '" aria-label="تكبير صورة المستند" data-ov="' + esc('<span class="ov">' + IC.eye + ' المس للتكبير</span>') + '"></button>' : '';
     var who = '<div class="who">' + IC.user + '<span>سجّله ' + esc(x.byName || 'المُدخِل') + ' — ' + R.when(x.at) + (x.type === 'permit' && x.sign ? ' — توقيع المستلم ✓' : '') + '</span></div>';
@@ -141,9 +148,9 @@
       foot = '<div class="fbar"><button class="btn" data-act="go" data-to="edit/' + encodeURIComponent(x.key) + '">' + IC.edit + 'عدّل وأعد الإرسال</button></div>';
     }
     var date = x.date ? R.dateLong(new Date(x.date + 'T12:00').getTime()) : '';
-    return R.head({ title: x.id || R.TYPE[x.type], back: true }) + '<main class="view ' + (foot ? 'form-view' : 'flush') + '" style="background:#fff">' + hero +
+    return R.head({ title: x.id || R.typeName(x), back: true }) + '<main class="view ' + (foot ? 'form-view' : 'flush') + '" style="background:#fff">' + hero +
       '<div style="padding:14px">' +
-      '<div class="dmeta">' + R.chip(x.status) + '<span>' + R.TYPE[x.type] + (date ? ' — ' + esc(date) : '') + '</span>' + lock + '</div>' +
+      '<div class="dmeta">' + R.chip(x.status) + '<span>' + R.typeName(x) + (date ? ' — ' + esc(date) : '') + '</span>' + lock + '</div>' +
       '<h2 class="dtitle">' + esc(heading(x)) + '</h2>' + fields(x) +
       (x.notes ? '<div class="fh" style="margin-top:8px;font-size:12.5px">ملاحظات: ' + esc(x.notes) + '</div>' : '') +
       '<div style="margin-top:12px">' + warnings(x).map(alertHtml).join('') + '</div>' + who + rejBox + tl + '</div></main>' + (foot || R.nav(''));

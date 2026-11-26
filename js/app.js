@@ -64,12 +64,17 @@
   }
 
   /* ---------- الأدوار ---------- */
+  /* nav = الشريط السفلي، more = شاشات زيادة في القائمة الجانبية */
   var ROLES = {
     site: { n: 'محاسب الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['new/permit', 'إذن جديد', 'truck'], ['new/qty', 'محضر جديد', 'ruler'], ['custody', 'العهدة', 'wallet'], ['mine', 'سجلاتي', 'folder']] },
-    eng: { n: 'مهندس الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['new/qty', 'محضر جديد', 'ruler'], ['mine', 'سجلاتي', 'folder'], ['soon:5.3', 'الأرشيف', 'images']] },
-    acc: { n: 'محاسب المشروع', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['soon:4.1', 'المستخلصات', 'stmt'], ['soon:4.3', 'السندات', 'money'], ['soon:4.4', 'الأطراف', 'users']] },
-    owner: { n: 'المالك', greet: 'يا حاج محمد', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['soon:5.1', 'اللوحة', 'pie'], ['soon:4.1', 'المستخلصات', 'stmt'], ['soon:4.4', 'الأطراف', 'users']] },
-    admin: { n: 'مدير المنظومة', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['soon:4.1', 'المستخلصات', 'stmt'], ['soon:4.3', 'السندات', 'money'], ['prefs', 'الإعدادات', 'settings']] }
+    eng: { n: 'مهندس الموقع', home: 'site', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['new/qty', 'محضر جديد', 'ruler'], ['mine', 'سجلاتي', 'folder'], ['soon:5.3', 'الأرشيف', 'images']],
+      more: [['stmts', 'المستخلصات', 'stmt']] },
+    acc: { n: 'محاسب المشروع', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['stmts', 'المستخلصات', 'stmt'], ['vouchers', 'السندات', 'money'], ['parties', 'الأطراف', 'users']],
+      more: [['dash', 'لوحة المشروع', 'pie']] },
+    owner: { n: 'المالك', greet: 'يا حاج محمد', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['dash', 'اللوحة', 'pie'], ['stmts', 'المستخلصات', 'stmt'], ['parties', 'الأطراف', 'users']],
+      more: [['vouchers', 'السندات', 'money']] },
+    admin: { n: 'مدير المنظومة', home: 'office', nav: [['home', 'الرئيسية', 'home'], ['inbox', 'الاعتماد', 'inbox'], ['dash', 'اللوحة', 'pie'], ['stmts', 'المستخلصات', 'stmt'], ['vouchers', 'السندات', 'money']],
+      more: [['parties', 'الأطراف', 'users']] }
   };
   function role() { return S.role; }
   function me() { return { role: S.role, name: (S.user && S.user.name) || ROLES[S.role].n, email: (S.user && S.user.email) || '' }; }
@@ -79,19 +84,27 @@
   function setData(d) {
     S.data = d;
     if (d.user && d.user.role && ROLES[d.user.role]) S.role = d.user.role;
-    IX.party = {}; (d.parties || []).forEach(function (p) { IX.party[p[0]] = { code: p[0], name: p[1], type: p[2] }; });
+    IX.party = {}; (d.parties || []).forEach(function (p) { IX.party[p[0]] = { code: p[0], name: p[1], type: p[2], phone: p[3] || '' }; });
+    IX.acc = {}; (d.accounts || []).forEach(function (a) { IX.acc[a[0]] = a[1]; });
     IX.item = {}; (d.items || []).forEach(function (p) { IX.item[p[0]] = { code: p[0], name: p[1], unit: p[2] }; });
     IX.boq = {}; (d.boq || []).forEach(function (p) { IX.boq[p[0]] = { code: p[0], name: p[1], unit: p[2], qty: p[3], price: p[4], done: p[5], boq: true }; });
     (d.subItems || []).forEach(function (p) { IX.boq[p[0]] = { code: p[0], name: p[1], unit: p[2], qty: null, price: null, done: null, boq: false }; });
     if (d.demo) {                     /* في التجربة: اللي اتسجّل على الجهاز ده بيفضل بعد إعادة الفتح */
       var saved = load('bdw_demo_docs');
       if (saved && saved.length) d.docs = saved;
+      var xs = load('bdw_demo_x');
+      if (xs) { if (xs.qtyAll) d.qtyAll = xs.qtyAll; if (xs.vouchers) d.vouchers = xs.vouchers; }
     }
     var p = load('bdw_project'); S.project = (p && (d.projects || []).some(function (x) { return x.code === p; })) ? p : ((d.projects || [])[0] || {}).code;
   }
-  function saveDemo() { if (S.data && S.data.demo) store('bdw_demo_docs', S.data.docs); }
+  function saveDemo() {
+    if (!S.data || !S.data.demo) return;
+    store('bdw_demo_docs', (S.data.docs || []).filter(function (d) { return !d._tmp; }));
+    store('bdw_demo_x', { qtyAll: S.data.qtyAll, vouchers: S.data.vouchers });
+  }
   function project(code) { var c = code || S.project; return (S.data.projects || []).filter(function (x) { return x.code === c; })[0] || {}; }
-  function party(c) { return IX.party[c] || { code: c, name: c || '—', type: '' }; }
+  function party(c) { return IX.party[c] || { code: c, name: c || '—', type: '', phone: '' }; }
+  function account(c) { return IX.acc[c] || ''; }
   function item(c) { return IX.item[c] || { code: c, name: c || '—', unit: '' }; }
   function boq(c) { return IX.boq[c] || { code: c, name: c || '—', unit: '' }; }
   function docs(f) { return (S.data.docs || []).filter(function (x) { return x.project === S.project && (!f || f(x)); }); }
@@ -100,6 +113,11 @@
 
   /* قيمة المستند ونصوصه في القوائم */
   var TYPE = { permit: 'إذن توريد', qty: 'محضر كميات', exp: 'مصروف عهدة', voucher: 'سند صرف', stmt: 'مستخلص' };
+  function typeName(x) {
+    if (x.type === 'voucher' && x.kind === 'قبض') return 'سند قبض';
+    if (x.type === 'stmt') return x.kind === 'عميل' ? 'مستخلص عميل' : 'مستخلص مقاول باطن';
+    return TYPE[x.type] || '';
+  }
   function value(x) {
     if (x.type === 'permit') return x.price == null ? null : x.qty * x.price;
     if (x.type === 'qty') { var b = boq(x.boq); return b.price == null ? null : x.qty * b.price * (1 - (project(x.project).discount || 0)); }
@@ -107,7 +125,8 @@
     return x.amount;
   }
   function title(x) {
-    var no = x.id || (x.type === 'qty' ? 'محضر' : x.type === 'exp' ? 'مصروف' : 'إذن') + ' بلا رقم بعد';
+    var no = x.id || (x.type === 'qty' ? 'محضر' : x.type === 'exp' ? 'مصروف' : x.type === 'voucher' ? 'سند' : 'إذن') + ' بلا رقم بعد';
+    if (x.type === 'voucher' && !x.party) return no + ' — ' + (x.notes || x.desc || '');
     if (x.type === 'permit' || x.type === 'voucher' || x.type === 'stmt') return no + ' — ' + party(x.party).name.split(' — ')[0];
     if (x.type === 'qty') return no + ' — ' + x.boq;
     return no + ' — ' + (x.desc || x.cat);
@@ -116,17 +135,21 @@
     if (x.type === 'permit') { var it = item(x.item); return it.name + '‏ — ' + num(x.qty) + ' ' + it.unit; }
     if (x.type === 'qty') { var b = boq(x.boq); return b.name + '‏ — ' + num(x.qty) + ' ' + b.unit; }
     if (x.type === 'exp') return x.cat;
-    if (x.type === 'voucher') return (x.notes || 'سند صرف') + ' — ' + (x.method || '');
-    if (x.type === 'stmt') return 'مستخلص جارٍ — ' + (x.techOk ? 'اعتماد فني ✓' : 'ينتظر الاعتماد الفني');
+    if (x.type === 'voucher') return (x.notes || x.desc || typeName(x)) + ' — ' + (x.method || '');
+    if (x.type === 'stmt') {
+      var nm = (x.kind === 'عميل' ? 'مستخلص عميل' : 'مستخلص') + (x.extNo && x.extNo !== 'جارٍ' ? ' رقم ' + x.extNo : ' جارٍ');
+      var st = x.status === 'مسودة' ? 'مسودة لم تُرسل' : x.status === 'تحت المراجعة' ? (x.techOk ? 'اعتماد فني ✓' : 'ينتظر الاعتماد الفني') : x.status;
+      return nm + ' — ' + st;
+    }
     return '';
   }
   var ICON = { permit: 'truck', qty: 'ruler', exp: 'receipt', voucher: 'money', stmt: 'stmt' };
 
   /* ---------- أجزاء الواجهة ---------- */
-  var CHIP = { 'مسجَّل': ['c-reg', 'clock'], 'معتمد': ['c-ok', 'check'], 'مرفوض': ['c-rej', 'x'], 'ملغى': ['c-void', 'x'], 'تحت المراجعة': ['c-rev', 'hourglass'], 'بانتظار المزامنة': ['c-sync', 'upload'] };
+  var CHIP = { 'مسجَّل': ['c-reg', 'clock'], 'معتمد': ['c-ok', 'check'], 'مرفوض': ['c-rej', 'x'], 'ملغى': ['c-void', 'x'], 'تحت المراجعة': ['c-rev', 'hourglass'], 'بانتظار المزامنة': ['c-sync', 'upload'], 'مسودة': ['c-draft', 'edit'] };
   function chip(s) { var c = CHIP[s] || ['c-void', 'dot']; return '<span class="chip ' + c[0] + '">' + IC[c[1]] + esc(s) + '</span>'; }
   function lead(icon, tone) { return '<span class="ld t-' + (tone || 'navy') + '">' + IC[icon] + '</span>'; }
-  function toneOf(s) { return s === 'معتمد' ? 'green' : s === 'مرفوض' ? 'red' : s === 'ملغى' ? 'gray' : s === 'بانتظار المزامنة' ? 'navy' : 'gold'; }
+  function toneOf(s) { return s === 'معتمد' ? 'green' : s === 'مرفوض' ? 'red' : s === 'ملغى' ? 'gray' : s === 'بانتظار المزامنة' || s === 'مسودة' ? 'navy' : 'gold'; }
   function gh(text, n, tone, s) { return '<div class="gh ' + (tone || '') + '">' + esc(text) + (n != null ? '<span class="n">' + num(n) + '</span>' : '') + (s ? '<span class="s">' + s + '</span>' : '') + '</div>'; }
   function docRow(x, o) {
     o = o || {};
@@ -254,17 +277,34 @@
     setTimeout(flush, 150);
   }
   function nextId(prefix) {
-    var max = 0; (S.data.docs || []).forEach(function (x) { if (x.id && x.id.indexOf(prefix) === 0) { var n = parseInt(x.id.slice(prefix.length), 10); if (n > max) max = n; } });
-    var s = String(max + 1); while (s.length < (prefix === 'SS-' ? 3 : 4)) s = '0' + s; return prefix + s;
+    var max = 0, see = function (id) { if (id && id.indexOf(prefix) === 0) { var n = parseInt(id.slice(prefix.length), 10); if (n > max) max = n; } };
+    (S.data.docs || []).forEach(function (x) { see(x.id); });
+    (S.data.vouchers || []).forEach(function (v) { see(v[0]); });
+    (S.data.qtyAll || []).forEach(function (q) { see(q[0]); });
+    var s = String(max + 1); while (s.length < (prefix === 'SS-' || prefix === 'CS-' ? 3 : 4)) s = '0' + s; return prefix + s;
   }
   var PREFIX = { permit: 'SP-', qty: 'Q-', exp: 'EX-' };
+  /* سند الصرف لحد حد المحاسب وسند القبض بيتعتمدوا مع التسجيل (نفس قاعدة السكريبت) */
+  function voucherAuto(d) { return d.kind === 'قبض' || Number(d.amount) <= (S.data.settings.voucherLimit || 0); }
   /* تطبيق العملية على البيانات المحلية (في التجربة، أو لحد ما التحديث الجاي يجيب نسخة السيرفر) */
   function applyLocal(op, res) {
     var list = S.data.docs || (S.data.docs = []);
     if (op.action === 'submit') {
-      var d = JSON.parse(JSON.stringify(op.doc)); d.key = op.key; d.id = (res && res.id) || nextId(PREFIX[d.type]); d.status = 'مسجَّل';
+      var d = JSON.parse(JSON.stringify(op.doc)), isV = d.type === 'voucher'; d.key = op.key;
+      d.id = (res && res.id) || nextId(isV ? (d.kind === 'قبض' ? 'RV-' : 'PV-') : PREFIX[d.type]);
+      d.status = isV ? ((res && res.status) || (voucherAuto(d) ? 'معتمد' : 'مسجَّل')) : 'مسجَّل';
       d.at = op.at; d.by = LIVE ? (S.user && S.user.email) || '' : S.role; d.byRole = S.role; d.byName = me().name; d.mine = true;
       d.log = [[op.at, 'سُجّل' + (op.queuedAt ? ' بدون إنترنت' : ''), me().name], [Date.now(), 'وصل للشيت ورُقِّم ' + d.id, '']];
+      if (d.type === 'qty' && S.data.qtyAll && !LIVE) {      /* في التجربة: المحضر الجديد يدخل في حساب المستخلصات */
+        var b0 = boq(d.boq), cp = b0.price != null ? b0.price * (1 - (project(d.project).discount || 0)) : 0, sub0 = d.exec && d.exec !== 'ذاتي' ? d.exec : '';
+        var rt = sub0 ? (S.data.rates || {})[sub0 + '|' + d.boq] || 0 : null;
+        S.data.qtyAll.push([d.id, d.date, d.boq, d.qty, cp, d.qty * cp, sub0, rt, sub0 ? d.qty * rt : 0, '', '', 'مسجَّل']);
+      }
+      if (isV) {
+        d.notes = d.desc;
+        if (d.status === 'معتمد') { d.decidedBy = me().name; d.decidedAt = Date.now() + 1; d.log.push([d.decidedAt, 'اعتُمد ضمن حد اعتماد المحاسب', me().name]); }
+        (S.data.vouchers = S.data.vouchers || []).unshift([d.id, d.kind, d.date, d.party, d.account, d.amount, d.method, d.from, d.ref || '', d.desc, d.status, me().name]);
+      }
       list.unshift(d); saveDemo(); return d;
     }
     if (op.action === 'resubmit') {
@@ -297,8 +337,9 @@
       }
       if (i >= 0) l2.splice(i, 1); saveOutbox(l2);
       var d = applyLocal(e.op, r);
-      (e.op.files || []).forEach(function (f) { if (!/^sample:/.test(f)) { /* الصورة بتفضل محفوظة على الجهاز للعرض */ } });
-      toast(e.op.action === 'resubmit' ? 'وصل التعديل وأُعيد إرسال ' + (d && d.id || '') : 'وصل للشيت ورُقِّم ' + (d && d.id || ''));
+      toast(e.op.action === 'resubmit' ? 'وصل التعديل وأُعيد إرسال ' + (d && d.id || '') : d && d.type === 'voucher'
+        ? 'وصل للشيت ورُقِّم ' + d.id + (d.status === 'معتمد' ? ' واتعتمد' : '، وبينتظر اعتماد المالك')
+        : 'وصل للشيت ورُقِّم ' + (d && d.id || ''));
       render();
       if (LIVE) bootstrap();
       if (l2.length) setTimeout(flush, 300);
@@ -334,6 +375,10 @@
         x.status = 'مرفوض'; x.reason = extra.reason; x.note = extra.note || ''; x.decidedBy = who; x.decidedAt = t;
         x.log = (x.log || []).concat([[t, 'رُفض: ' + extra.reason, who]]);
       }
+      if (!LIVE) {                                      /* في التجربة: حالة المحضر والسند المختصرين تتبع القرار */
+        if (x.type === 'qty') (S.data.qtyAll || []).forEach(function (q) { if (q[0] === x.id) q[11] = x.status === 'مرفوض' ? 'ملغى' : x.status; });
+        if (x.type === 'voucher') (S.data.vouchers || []).forEach(function (v) { if (v[0] === x.id) v[10] = x.status; });
+      }
       saveDemo(); return r;
     };
     if (!LIVE) return Promise.resolve(apply({ ok: true }));
@@ -346,7 +391,10 @@
     var v = value(x); if (v == null) return '';
     if (x.type === 'permit') return '5100 مدين / 2200 دائن — ' + money(v);
     if (x.type === 'exp') return S.data.settings.postExp ? (x.cat === 'وقود' || x.cat === 'نقل' || x.cat === 'صيانة' ? '5400' : '5500') + ' مدين / 1500 دائن — ' + money(v) : '';   /* مصروفات العهدة لسه مش بتترحّل */
-    if (x.type === 'voucher') return (x.account || '2100') + ' مدين / ' + (x.from === 'البنك' ? '1120' : '1110') + ' دائن — ' + money(v);
+    if (x.type === 'voucher') {                       /* نفس قيد اليومية في الشيت: البنك 1200 والخزينة 1100 */
+      var cash = x.from === 'البنك' ? '1200' : '1100';
+      return x.kind === 'قبض' ? cash + ' مدين / ' + (x.account || '1300') + ' دائن — ' + money(v) : (x.account || '2100') + ' مدين / ' + cash + ' دائن — ' + money(v);
+    }
     return '';
   }
   /* ما ينتظر قرار المستخدم الحالي */
@@ -439,10 +487,14 @@
       .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'server' }; }); }, function () { return null; })
       .then(function (d) { clearTimeout(timer); return d; });
   }
+  var loadP = null;
+  /* بعد أي قرار أو مستخلص: لو فيه تحميل شغّال نستناه ونحمّل تاني عشان التعديل يبان */
+  function refresh() { if (!LIVE) return Promise.resolve(); return S.loading && loadP ? loadP.then(function () { return bootstrap(); }) : bootstrap(); }
   function bootstrap(manual) {
-    if (!LIVE || S.loading) return;
+    if (!LIVE) return Promise.resolve();
+    if (S.loading) return loadP || Promise.resolve();
     S.loading = true; S.netErr = false; if (!S.data) render();
-    post(CFG.API_URL, { action: 'bootstrap', idToken: S.token, project: load('bdw_project') || '' }).then(function (d) {
+    return (loadP = post(CFG.API_URL, { action: 'bootstrap', idToken: S.token, project: load('bdw_project') || '' }).then(function (d) {
       S.loading = false;
       if (d === null) { if (S.data) { S.offline = true; paintNet(); if (manual) toast('لسه مفيش اتصال. اللي ظاهر آخر نسخة اتحمّلت.'); } else { S.netErr = true; render(); } return; }
       if (!d.ok) {
@@ -457,10 +509,10 @@
       }
       S.offline = false; S.dataAt = Date.now();
       if (d.user && d.user.name && S.user) S.user.name = d.user.name;
-      setData(d); store('bdw_cache', { at: S.dataAt, email: S.user && S.user.email, data: d }); render();
+      setData(d); store('bdw_cache', { at: S.dataAt, email: S.user && S.user.email, data: d }); render(true);
       if (manual) toast('البيانات اتحدّثت.');
       flush(); emit('data');
-    });
+    }));
   }
   function paintNet() {
     var el = $('.netbar'); if (!el) return;
@@ -648,6 +700,8 @@
     if (!CFG.PREVIEW) return history.back();
     trail.pop(); location.replace('#' + trail[trail.length - 1]);
   }
+  /* الشاشة دي قبل الحالية في المسار؟ */
+  function inTrail(h) { var i = trail.lastIndexOf(h); return i >= 0 && i < trail.length - 1; }
   /* يرجع لشاشة سابقة في المسار (زي صندوق الاعتماد بعد القرار)، ولو مش فيه يحط الشاشة مكان الحالية */
   function backTo(h) {
     var i = trail.lastIndexOf(h);
@@ -660,7 +714,7 @@
   function openDrawer() {
     var d = $('#drawer'), u = me(), r = S.role, pend = outbox().length;
     var items = [['home', 'الرئيسية', 'home']];
-    ROLES[r].nav.slice(1).forEach(function (t) { if (t[0].indexOf('soon') !== 0 && t[0] !== 'prefs') items.push(t); });
+    ROLES[r].nav.slice(1).concat(ROLES[r].more || []).forEach(function (t) { if (t[0].indexOf('soon') !== 0 && t[0] !== 'prefs') items.push(t); });
     if (r === 'acc' || r === 'admin' || r === 'owner') items.push(['custody', 'العهد', 'wallet']);
     d.innerHTML = '<div class="dr-head">' + IC.mark + '<div><b>منظومة البديوي</b><small>' + esc(u.name) + (u.email ? ' — ' + esc(u.email) : '') + '</small></div></div>' +
       '<div style="padding:8px 0">' + items.map(function (t) { return '<button class="dr-item" data-act="nav" data-to="' + t[0] + '">' + IC[t[2]] + '<span>' + t[1] + '</span></button>'; }).join('') +
@@ -713,7 +767,7 @@
     if (a === 'install') return install();
     if (a === 'signout') return signOut();
     if (a === 'role') { S.role = b.getAttribute('data-r'); store('bdw_role', S.role); closeDrawer(); toast('بتجرّب التطبيق دلوقتي كـ' + ROLES[S.role].n); return go('home'); }
-    if (a === 'reset-demo') { store('bdw_demo_docs', null); saveOutbox([]); S.data = null; closeDrawer(); setData(JSON.parse(JSON.stringify(window.BDW_SAMPLE))); toast('رجعت بيانات العيّنة لأصلها.'); return go('home'); }
+    if (a === 'reset-demo') { store('bdw_demo_docs', null); store('bdw_demo_x', null); saveOutbox([]); S.data = null; closeDrawer(); setData(JSON.parse(JSON.stringify(window.BDW_SAMPLE))); toast('رجعت بيانات العيّنة لأصلها.'); return go('home'); }
     if (a === 'project') { S.project = b.getAttribute('data-code'); store('bdw_project', S.project); if (LIVE) bootstrap(); return render(true); }
     if (a === 'notify') { var st = load('bdw_notify') || { approve: true, daily: S.role === 'owner' }, k = b.getAttribute('data-k'); st[k] = !st[k]; store('bdw_notify', st); return render(true); }
     if (R.acts[a]) return R.acts[a](b, e);
@@ -740,7 +794,8 @@
     isMine: isMine, value: value, title: title, sub: sub, journal: journal, chip: chip, lead: lead, gh: gh, docRow: docRow, head: head, nav: nav, strip: strip,
     go: go, back: goBack, backTo: backTo, render: render, IC: IC, inCustody: inCustody, blob: blob, docArt: docArt, photoHtml: photoHtml, fillPhotos: fillPhotos, queue: queue, outbox: outbox, pendingDocs: pendingDocs,
     decide: decide, inboxDocs: inboxDocs, openSheet: openSheet, closeSheet: closeSheet, confirmBox: confirmBox, custody: custody, overrun: overrun, post: post,
-    TYPE: TYPE, ICON: ICON, emit: emit, tokenFresh: tokenFresh
+    TYPE: TYPE, ICON: ICON, emit: emit, tokenFresh: tokenFresh,
+    typeName: typeName, account: account, refresh: refresh, saveDemo: saveDemo, inTrail: inTrail, nextId: nextId, voucherAuto: voucherAuto, toneOf: toneOf
   };
   for (var k in X) R[k] = X[k];
   (window.BDW_EXT || []).forEach(function (f) { f(R); });
