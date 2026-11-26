@@ -16,13 +16,14 @@
  */
 
 var BDW = {
-  VERSION: '2026-11-26.2',
+  VERSION: '2026-11-26.3',
   CLIENT_ID: '760770227194-t2r0kna5g34igsarqfmf8psm8418ejlr.apps.googleusercontent.com',
+  APP_URL: 'https://kareem20607-ess.github.io/bedewy-app/',      // بيتحط في الإيميلات لو «رابط التطبيق» مش متكتب في الإعدادات
   FIRST: 4,                                   // أول صف بيانات في كل الأوراق (1 عنوان، 2 شرح، 3 رؤوس)
   S: {
     permits: 'إذونات التوريد', qty: 'الكميات المنفذة', vouchers: 'السندات', stmts: 'المستخلصات',
     projects: 'المشروعات', parties: 'الأطراف', items: 'الأصناف', boq: 'المقايسة', subs: 'عقود الباطن', journal: 'اليومية', accounts: 'دليل الحسابات',
-    users: 'المستخدمين', settings: 'إعدادات التطبيق', custody: 'العهد', exp: 'مصروفات العهدة', log: 'سجل التطبيق'
+    users: 'المستخدمين', settings: 'إعدادات التطبيق', custody: 'العهد', exp: 'مصروفات العهدة', log: 'سجل التطبيق', print: 'طباعة المستخلص'
   },
   /* أرقام الأعمدة اللي السكريبت بيقراها أو بيكتبها. الأعمدة اللي فيها معادلات (الأسماء، الإجماليات، قيمة المستخلص
      وصافيه، سعر الجهاز وفئة الباطن في المحاضر) بتتقري بس، وعمرها ما بتتكتب، عشان المعادلة ما تتكسرش. */
@@ -33,10 +34,11 @@ var BDW = {
     stmts: { no: 1, kind: 2, project: 3, party: 5, date: 7, extNo: 8, current: 9, retPct: 11, ret: 12, adv: 13, ded: 14, net: 15, status: 16, approvedAt: 17, notes: 18, plus: 20, n: 20 },
     exp: { no: 1, date: 2, project: 3, custody: 4, cat: 5, desc: 6, amount: 7, status: 8, photo: 9, by: 10, notes: 11, n: 11 },
     custody: { no: 1, project: 2, holder: 3, amount: 4, date: 5, from: 6, status: 7, notes: 8, n: 8 },
-    users: { email: 1, name: 2, role: 3, projects: 4, active: 5, notes: 6, n: 6 },
+    users: { email: 1, name: 2, role: 3, projects: 4, active: 5, notes: 6, approve: 7, daily: 8, n: 8 },
     log: { time: 1, key: 2, id: 3, type: 4, event: 5, email: 6, name: 7, role: 8, details: 9, n: 9 }
   },
   SHEET_OF: { permit: 'permits', qty: 'qty', voucher: 'vouchers', stmt: 'stmts', exp: 'exp' },
+  TYPE_NAME: { permit: 'إذن توريد', qty: 'محضر كميات', exp: 'مصروف عهدة', voucher: 'سند صرف', stmt: 'مستخلص' },
   PREFIX: { permit: 'SP-', qty: 'Q-', exp: 'EX-', voucher: 'PV-' },   // سند القبض بيبدأ RV-
   SUB: 'مقاول باطن', CLIENT: 'عميل',                                // نوع المستخلص في الشيت
   METHODS: ['نقدي', 'تحويل', 'شيك'], FROMS: ['الخزينة', 'البنك'],
@@ -46,7 +48,8 @@ var BDW = {
   MARK: '⟲ مرفوض',                            // أول سطر في الملاحظات لما المستند يترفض من التطبيق
   SET: {                                       // أسماء البنود في ورقة «إعدادات التطبيق»
     limit: 'حد اعتماد محاسب المشروع للسندات', pricePct: 'نسبة تنبيه اختلاف السعر', late: 'أيام تأخير الاعتماد',
-    radius: 'نطاق موقع المشروع (كم)', renewMail: 'إشعار طلب تجديد العهدة بالبريد', folder: 'فولدر صور التطبيق', site: 'موقع المشروع '
+    radius: 'نطاق موقع المشروع (كم)', renewMail: 'إشعار طلب تجديد العهدة بالبريد', folder: 'فولدر صور التطبيق', site: 'موقع المشروع ',
+    appUrl: 'رابط التطبيق'
   }
 };
 
@@ -77,11 +80,15 @@ function bdwRoute_(b) {
   if (act === 'approve') return bdwDecide_(me, b, 'approve');
   if (act === 'reject') return bdwDecide_(me, b, 'reject');
   if (act === 'approveTech') return bdwDecide_(me, b, 'tech');
-  if (act === 'photo') return bdwPhoto_(me, String(b.id || ''));
+  if (act === 'photo') return bdwPhoto_(me, String(b.id || ''), b.thumb === true);
+  if (act === 'archive') return bdwArchive_(me, b);
+  if (act === 'register') return bdwRegister_(me, b);
   if (act === 'custodyRenew') return bdwRenew_(me, String(b.project || ''));
   if (act === 'stmtNew') return bdwStmtNew_(me, b);
   if (act === 'stmtSend') return bdwStmtSend_(me, b);
   if (act === 'stmtUnlink') return bdwStmtUnlink_(me, b);
+  if (act === 'prefs') return bdwPrefs_(me, b);
+  if (act === 'stmtPdf') return bdwStmtPdfAct_(me, b);
   throw bdwErr_('invalid', 'طلب غير معروف.');
 }
 
@@ -118,21 +125,28 @@ function bdwVerify_(idToken) {
 function bdwClientId_() { return PropertiesService.getScriptProperties().getProperty('CLIENT_ID') || BDW.CLIENT_ID; }
 
 function bdwUser_(tok) {
-  var sh = bdwSheet_(BDW.S.users);
-  var rows = bdwRows_(sh, BDW.C.users.n), C = BDW.C.users;
+  var rows = bdwRows_(bdwSheet_(BDW.S.users), BDW.C.users.n), C = BDW.C.users;
   for (var i = 0; i < rows.length; i++) {
-    var r = rows[i].v;
-    if (String(r[C.email - 1]).toLowerCase().trim() !== tok.email) continue;
-    if (/^لا/.test(String(r[C.active - 1]).trim())) break;
-    var roleTxt = String(r[C.role - 1]).trim(), role = BDW.ROLE[roleTxt] || (['site', 'eng', 'acc', 'owner', 'admin'].indexOf(roleTxt) >= 0 ? roleTxt : '');
-    if (!role) break;
-    var pr = String(r[C.projects - 1] || '').trim();
-    return {
-      email: tok.email, name: String(r[C.name - 1] || '').trim() || tok.name || tok.email.split('@')[0], role: role,
-      all: !pr || pr === 'الكل', projects: pr.split(/[،,\s]+/).filter(String)
-    };
+    if (String(rows[i].v[C.email - 1]).toLowerCase().trim() !== tok.email) continue;
+    var u = bdwUserRow_(rows[i].v, rows[i].row, tok);
+    if (u) return u;
+    break;
   }
   throw bdwErr_('not_allowed', 'الإيميل ده مش في جدول المستخدمين. كلّم مدير المنظومة يضيفه.');
+}
+/* صف واحد من «المستخدمين»: الدور والمشروعات واختيارات الإشعارات (الفاضي = نعم، والملخص اليومي افتراضيًا للمالك والمدير بس) */
+function bdwUserRow_(v, row, tok) {
+  var C = BDW.C.users;
+  if (/^لا/.test(String(v[C.active - 1]).trim())) return null;
+  var roleTxt = String(v[C.role - 1]).trim(), role = BDW.ROLE[roleTxt] || (['site', 'eng', 'acc', 'owner', 'admin'].indexOf(roleTxt) >= 0 ? roleTxt : '');
+  if (!role) return null;
+  var email = String(v[C.email - 1]).toLowerCase().trim(), pr = String(v[C.projects - 1] || '').trim();
+  var yes = function (x, def) { x = String(x === undefined || x === null ? '' : x).trim(); return x ? !/^لا/.test(x) : def; };
+  return {
+    email: email, name: String(v[C.name - 1] || '').trim() || (tok && tok.name) || email.split('@')[0], role: role,
+    all: !pr || pr === 'الكل', projects: pr.split(/[،,\s]+/).filter(String),
+    prefs: { approve: yes(v[C.approve - 1], true), daily: yes(v[C.daily - 1], role === 'owner' || role === 'admin') }, row: row
+  };
 }
 function bdwCanSee_(me, project) { return me.all || me.projects.indexOf(project) >= 0; }
 
@@ -245,7 +259,8 @@ function bdwSettings_() {
   return {
     voucherLimit: n(BDW.SET.limit, 50000), priceWarnPct: pct > 1 ? pct / 100 : pct, lateDays: n(BDW.SET.late, 3),
     siteRadiusKm: n(BDW.SET.radius, 2), renewMail: !/^لا/.test(String(m[BDW.SET.renewMail] || '')),
-    folder: bdwDriveId_(m[BDW.SET.folder]) || String(m[BDW.SET.folder] || '').trim(), sites: sites, postExp: false
+    folder: bdwDriveId_(m[BDW.SET.folder]) || String(m[BDW.SET.folder] || '').trim(), sites: sites, postExp: false,
+    appUrl: String(m[BDW.SET.appUrl] || '').trim() || BDW.APP_URL
   };
 }
 
@@ -256,17 +271,24 @@ function bdwLog_(key, id, type, event, me, details) {
   var sh = bdwSheet_(BDW.S.log), C = BDW.C.log, r = bdwNextRow_(sh);
   sh.getRange(r, 1, 1, C.n).setValues([[new Date(), key || '', id || '', type || '', event, me.email, me.name, me.role, details ? JSON.stringify(details) : '']]);
 }
-/* فهرس السجل: بالمفتاح، وبالمستند (النوع|الرقم) */
-function bdwLogIndex_() {
-  var sh = bdwSS_().getSheetByName(BDW.S.log), idx = { byKey: {}, byDoc: {}, renew: [] };
-  if (!sh) return idx;
+/* كل سطور السجل كأحداث */
+function bdwLogRead_() {
+  var sh = bdwSS_().getSheetByName(BDW.S.log), out = [];
+  if (!sh) return out;
   var C = BDW.C.log;
   bdwRows_(sh, C.n).forEach(function (r) {
     var v = r.v, d = {};
     try { d = v[C.details - 1] ? JSON.parse(v[C.details - 1]) : {}; } catch (e) { }
-    var ev = { t: (v[C.time - 1] instanceof Date) ? v[C.time - 1].getTime() : Date.now(), key: String(v[C.key - 1] || ''), id: String(v[C.id - 1] || ''),
+    out.push({ t: (v[C.time - 1] instanceof Date) ? v[C.time - 1].getTime() : Date.now(), key: String(v[C.key - 1] || ''), id: String(v[C.id - 1] || ''),
       type: String(v[C.type - 1] || ''), event: String(v[C.event - 1] || ''), email: String(v[C.email - 1] || '').toLowerCase(),
-      name: String(v[C.name - 1] || ''), role: String(v[C.role - 1] || ''), d: d };
+      name: String(v[C.name - 1] || ''), role: String(v[C.role - 1] || ''), d: d });
+  });
+  return out;
+}
+/* فهرس السجل: بالمفتاح، وبالمستند (النوع|الرقم) */
+function bdwLogIndex_() {
+  var idx = { byKey: {}, byDoc: {}, renew: [] };
+  bdwLogRead_().forEach(function (ev) {
     if (ev.event === 'custodyRenew') { idx.renew.push(ev); return; }
     if (ev.key) idx.byKey[ev.key] = ev;
     if (ev.id && ev.type) { var k = ev.type + '|' + ev.id; (idx.byDoc[k] = idx.byDoc[k] || []).push(ev); }
@@ -496,7 +518,7 @@ function bdwBootstrap_(me, wanted) {
 
   return {
     ok: true, version: BDW.VERSION, serverTime: Date.now(),
-    user: { email: me.email, name: me.name, role: me.role },
+    user: { email: me.email, name: me.name, role: me.role, prefs: me.prefs || null },
     settings: { voucherLimit: st.voucherLimit, priceWarnPct: st.priceWarnPct, lateDays: st.lateDays, siteRadiusKm: st.siteRadiusKm, postExp: st.postExp },
     projects: projects, parties: parties.map(function (p) { return [p[0], p[1], p[2], p[4]]; }), balances: balances, items: items, accounts: accounts,
     supplies: supplies, lastPrice: lastPrice, boq: boq, subItems: subItems, rates: rates, contracts: contracts,
@@ -960,10 +982,17 @@ function bdwSaveImage_(dataUrl, name) {
   return 'https://drive.google.com/file/d/' + file.getId() + '/view';
 }
 /* الصورة بتوصل للتطبيق عن طريق السكريبت، فالفولدر بيفضل خاص. وبس الصور المذكورة في الشيت أو السجل */
-function bdwPhoto_(me, id) {
+function bdwPhoto_(me, id, thumb) {
   id = id.replace(/^drive:/, '');
   if (!/^[\w-]{20,}$/.test(id)) throw bdwErr_('invalid', 'رقم الصورة غلط.');
   if (!bdwKnownPhoto_(id)) throw bdwErr_('forbidden', 'الصورة دي مش تبع مستندات المنظومة.');
+  if (thumb) {                                              /* صورة صغيرة لكروت الأرشيف */
+    try {
+      var rt = UrlFetchApp.fetch('https://drive.google.com/thumbnail?sz=w360&id=' + encodeURIComponent(id),
+        { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+      if (rt.getResponseCode() === 200) { var tt = rt.getBlob(); return { ok: true, thumb: true, data: 'data:' + (tt.getContentType() || 'image/jpeg') + ';base64,' + Utilities.base64Encode(tt.getBytes()) }; }
+    } catch (e) { }
+  }
   var file = DriveApp.getFileById(id), mime = file.getMimeType();
   if (file.getSize() <= 1500000 && /^image\//.test(mime)) {
     var b = file.getBlob();
@@ -997,6 +1026,62 @@ function bdwKnownPhoto_(id) {
   return found;
 }
 
+/* ======================= أرشيف المستندات (5.3) ======================= */
+
+/* كل صفوف المشروع اللي ليها صورة (إذونات، محاضر، مصروفات عهدة) من أي تاريخ، بالأحدث الأول:
+   [النوع، الرقم، التاريخ، الوصف، الصورة، الحالة، المفتاح] — الصورة نفسها بتيجي بعد كده من «photo» */
+function bdwArchive_(me, b) {
+  if (['eng', 'acc', 'owner', 'admin'].indexOf(me.role) < 0) throw bdwErr_('forbidden', 'الأرشيف للمهندس والمكتب.');
+  var project = String(b.project || '').trim(), ss = bdwSS_();
+  if (!project || !bdwCanSee_(me, project)) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
+  var log = bdwLogIndex_(), pn = {}, inm = {}, out = [];
+  bdwRows_(bdwSheet_(BDW.S.parties), 2).forEach(function (r) { pn[String(r.v[0]).trim()] = String(r.v[1]).trim(); });
+  bdwRows_(bdwSheet_(BDW.S.items), 2).forEach(function (r) { inm[String(r.v[0]).trim()] = String(r.v[1]).trim(); });
+  var each = function (type, label) {
+    var sh = ss.getSheetByName(BDW.S[BDW.SHEET_OF[type]]), C = BDW.C[BDW.SHEET_OF[type]];
+    if (!sh) return;
+    bdwRows_(sh, C.n).forEach(function (r) {
+      var v = r.v, id = String(v[0]).trim(), ref = bdwPhotoRef_(v[C.photo - 1]);
+      if (!ref || String(v[C.project - 1]).trim() !== project) return;
+      var inf = bdwDocInfo_(log.byDoc[type + '|' + id]), st = bdwStatus_(type, v[C.status - 1], inf.last && inf.last.event === 'reject');
+      if (!st) return;
+      out.push([type, id, bdwIso_(v[C.date - 1]), label(v, C), ref, st, inf.submit ? inf.submit.key : 'id:' + id]);
+    });
+  };
+  var nm = function (m, c) { c = String(c || '').trim(); return m[c] || c; };
+  each('permit', function (v, C) { return [nm(pn, v[C.party - 1]), nm(inm, v[C.item - 1])].filter(String).join(' — '); });
+  each('qty', function (v, C) { var s = String(v[C.sub - 1] || '').trim(); return [nm(inm, v[C.item - 1]), bdwQtyTxt_(bdwNum_(v[C.qty - 1]) || 0, ''), s ? nm(pn, s) : 'تنفيذ ذاتي'].join(' — '); });
+  each('exp', function (v, C) { return [String(v[C.cat - 1] || '').trim(), String(v[C.desc - 1] || '').trim(), bdwMoney_(bdwNum_(v[C.amount - 1]) || 0) + ' ج'].filter(String).join(' — '); });
+  out.sort(function (a, b) { return b[2].localeCompare(a[2]) || b[1].localeCompare(a[1]); });
+  return { ok: true, items: out.slice(0, 3000) };
+}
+
+/* ======================= سجل الإذونات ومصروفات العهدة للعرض على الكمبيوتر (5.2) ======================= */
+
+/* المحاضر والسندات والمستخلصات كاملة في التحميل العادي؛ الإذونات والمصروفات بتيجي من هنا كلها بشكل مختصر:
+   إذن: [الرقم، التاريخ، المورد، الصنف، الكمية، السعر، الإجمالي، الحالة، الصورة، المفتاح، المُدخِل]
+   مصروف: [الرقم، التاريخ، العهدة، التصنيف، البيان، المبلغ، الحالة، الصورة، المفتاح، المُدخِل] */
+function bdwRegister_(me, b) {
+  if (['eng', 'acc', 'owner', 'admin'].indexOf(me.role) < 0) throw bdwErr_('forbidden', 'العرض ده للمكتب.');
+  var project = String(b.project || '').trim(), type = String(b.type || '');
+  if (!project || !bdwCanSee_(me, project)) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
+  if (type !== 'permit' && type !== 'exp') throw bdwErr_('invalid', 'نوع غير معروف.');
+  var name = BDW.SHEET_OF[type], C = BDW.C[name], sh = bdwSS_().getSheetByName(BDW.S[name]), log = bdwLogIndex_(), out = [];
+  if (sh) bdwRows_(sh, C.n).forEach(function (r) {
+    var v = r.v, id = String(v[0]).trim();
+    if (String(v[C.project - 1]).trim() !== project) return;
+    var inf = bdwDocInfo_(log.byDoc[type + '|' + id]), st = bdwStatus_(type, v[C.status - 1], inf.last && inf.last.event === 'reject');
+    if (!st) return;
+    var key = inf.submit ? inf.submit.key : 'id:' + id, by = inf.submit ? inf.submit.name : String(v[C.by - 1] || '').trim();
+    if (type === 'permit') out.push([id, bdwIso_(v[C.date - 1]), String(v[C.party - 1]).trim(), String(v[C.item - 1]).trim(), bdwNum_(v[C.qty - 1]) || 0,
+      bdwNum_(v[C.price - 1]), bdwNum_(v[C.total - 1]) || 0, st, bdwPhotoRef_(v[C.photo - 1]), key, by]);
+    else out.push([id, bdwIso_(v[C.date - 1]), String(v[C.custody - 1]).trim(), String(v[C.cat - 1] || '').trim(), String(v[C.desc - 1] || '').trim(),
+      bdwNum_(v[C.amount - 1]) || 0, st, bdwPhotoRef_(v[C.photo - 1]), key, by]);
+  });
+  out.sort(function (a, b) { return b[1].localeCompare(a[1]) || b[0].localeCompare(a[0]); });
+  return { ok: true, type: type, rows: out };
+}
+
 /* ======================= طلب تجديد العهدة ======================= */
 
 function bdwRenew_(me, project) {
@@ -1017,6 +1102,454 @@ function bdwRenew_(me, project) {
     }
   }
   return { ok: true };
+}
+
+/* ======================= الإشعارات والملخص اليومي (6.2) ======================= */
+
+/* الإشعارات بالبريد من حساب صاحب السكريبت، والتطبيق نفسه ما بيبعتش حاجة:
+   - كل ربع ساعة (bdwNotifyTick): الأحداث الجديدة في «سجل التطبيق» بتتجمّع لكل مستخدم في إيميل واحد:
+     اللي بقى مستني قراره، والمرفوض من مستنداته بسببه، وتنبيه المحضر اللي عدّى المقايسة (للمهندس والمالك).
+   - كل يوم حوالي 9 مساءً (bdwDailySummary): ملخص اليوم لكل مستخدم مشغّل «الملخص اليومي».
+   كل مستخدم يوقف اللي مش عاوزه من «إعداداتي» في التطبيق، والاختيار بيتحفظ في صفّه في «المستخدمين».
+   التشغيل: setupNotifications مرة من المحرر، وبعدين مشغّلين (Triggers) من صفحة المشغّلات في المحرر:
+   bdwNotifyTick كل 15 دقيقة، وbdwDailySummary كل يوم من 9 لـ10 مساءً. السكريبت نفسه ما بيعملش مشغّلات،
+   عشان ما يحتاجش صلاحية جديدة. الإيقاف الكامل: stopNotifications (المشغّلات بتفضل بس ما بتبعتش حاجة). */
+
+function bdwPrefs_(me, b) {
+  var pairs = [], C = BDW.C.users;
+  if (typeof b.approve === 'boolean') pairs.push([C.approve, b.approve ? 'نعم' : 'لا']);
+  if (typeof b.daily === 'boolean') pairs.push([C.daily, b.daily ? 'نعم' : 'لا']);
+  if (!pairs.length) throw bdwErr_('invalid', 'مفيش إعداد يتحفظ.');
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw bdwErr_('busy', 'السكريبت مشغول دلوقتي. جرّب تاني بعد ثواني.');
+  try {
+    bdwSet_(bdwSheet_(BDW.S.users), me.row, pairs);
+  } finally {
+    lock.releaseLock();
+  }
+  return { ok: true, prefs: bdwUser_({ email: me.email, name: me.name }).prefs };
+}
+
+/* كل المستخدمين النشطين بأدوارهم ومشروعاتهم واختياراتهم */
+function bdwUsersAll_() {
+  var out = [], seen = {}, C = BDW.C.users;
+  bdwRows_(bdwSheet_(BDW.S.users), C.n).forEach(function (r) {
+    var u = bdwUserRow_(r.v, r.row, null);
+    if (!u || !u.email || seen[u.email]) return;
+    seen[u.email] = 1; out.push(u);
+  });
+  return out;
+}
+
+/* بيانات كل مشروع زي ما التطبيق بيشوفها، بعين مدير المنظومة */
+function bdwBootstraps_() {
+  var viewer = { email: '', name: 'منظومة البديوي', role: 'admin', all: true, projects: [] }, out = {};
+  bdwRows_(bdwSheet_(BDW.S.projects), 1).forEach(function (r) {
+    var c = String(r.v[0]).trim();
+    if (!c || out[c]) return;
+    try { out[c] = bdwBootstrap_(viewer, c); out[c].code = c; } catch (e) { console.error('bootstrap ' + c + ': ' + e); }
+  });
+  return out;
+}
+
+function bdwPending_(d) { return !!d && (d.status === 'مسجَّل' || (d.type === 'stmt' && d.status === 'تحت المراجعة')); }
+/* المستند ده مستني قرار من الدور ده؟ نفس قواعد صندوق الاعتماد */
+function bdwAwaits_(d, role, st) {
+  if (!bdwPending_(d)) return false;
+  var kind = d.type === 'stmt' && !d.techOk ? 'tech' : 'approve';
+  return bdwAllowed_(role, d.type, d.status, kind, d.type === 'voucher' ? (Number(d.amount) || 0) : 0,
+    { tech: d.techOk ? {} : null, submit: d.byRole ? { role: d.byRole } : null }, st);
+}
+/* البند عدّى كمية المقايسة؟ كل المحاضر اللي مش ملغية */
+function bdwOverBoq_(bs, item) {
+  var b = null;
+  (bs.boq || []).forEach(function (x) { if (x[0] === item) b = x; });
+  if (!b || !(b[3] > 0)) return null;
+  var done = 0;
+  (bs.qtyAll || []).forEach(function (q) { if (q[2] === item && q[11] !== 'ملغى') done += Number(q[3]) || 0; });
+  return done > b[3] ? { item: item, name: b[1], unit: b[2], boq: b[3], done: done, pct: done / b[3] } : null;
+}
+
+/* كل ربع ساعة (مشغّل من setupNotifications) */
+function bdwNotifyTick() {
+  var props = PropertiesService.getScriptProperties(), now = Date.now(), since = 0;
+  if (props.getProperty('NOTIFY_OFF') === '1') return 0;
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return 0;
+  try {
+    since = Number(props.getProperty('NOTIFY_SINCE') || 0);
+    props.setProperty('NOTIFY_SINCE', String(now));
+  } finally {
+    lock.releaseLock();
+  }
+  if (!since) return 0;                                     /* أول مرة: نبدأ من دلوقتي، من غير ما نبعت أحداث قديمة */
+  var evs = bdwLogRead_().filter(function (e) { return e.t > since && e.t <= now; });
+  return evs.length ? bdwNotifyEvents_(evs) : 0;
+}
+
+function bdwNotifyEvents_(evs) {
+  var st = bdwSettings_(), users = bdwUsersAll_(), bsBy = bdwBootstraps_(), out = {}, sent = 0, byEmail = {};
+  users.forEach(function (u) { byEmail[u.email] = u; });
+  var box = function (u) { return out[u.email] || (out[u.email] = { u: u, wait: [], rej: [], boq: [], seen: {} }); };
+  var finals = [], finSeen = {};
+  var find = function (type, id) {
+    for (var c in bsBy) {
+      var ds = bsBy[c].docs;
+      for (var i = 0; i < ds.length; i++) if (ds[i].type === type && ds[i].id === id) return { d: ds[i], bs: bsBy[c] };
+    }
+    return null;
+  };
+  evs.forEach(function (e) {
+    var hit = e.type && e.id ? find(e.type, e.id) : null, d = hit && hit.d;
+    if (!d) return;
+    if ((e.event === 'submit' || e.event === 'resubmit' || e.event === 'stmtSend' || e.event === 'approveTech') && bdwPending_(d)) {
+      users.forEach(function (u) {
+        if (!u.prefs.approve || u.email === d.by || u.email === e.email || !bdwCanSee_(u, d.project) || !bdwAwaits_(d, u.role, st)) return;
+        var bx = box(u);
+        if (bx.seen[d.key]) return;
+        bx.seen[d.key] = 1; bx.wait.push({ d: d, bs: hit.bs });
+      });
+    }
+    if (e.event === 'approve' && d.type === 'stmt' && (d.status === 'معتمد' || d.status === 'مصروف') && !finSeen[d.id]) { finSeen[d.id] = 1; finals.push(hit); }
+    if (e.event === 'reject') {
+      var cu = byEmail[String(d.by || '').toLowerCase()];
+      if (cu && cu.prefs.approve && cu.email !== e.email) box(cu).rej.push({ d: d, bs: hit.bs, reason: e.d.reason || '', note: e.d.note || '', by: e.name });
+    }
+    if (d.type === 'qty' && (e.event === 'submit' || e.event === 'resubmit') && d.status !== 'ملغى' && d.status !== 'مرفوض') {
+      var over = bdwOverBoq_(hit.bs, d.boq);
+      if (over) users.forEach(function (u) {
+        if ((u.role !== 'eng' && u.role !== 'owner') || !u.prefs.approve || u.email === e.email || !bdwCanSee_(u, d.project)) return;
+        var bx = box(u), k = 'boq|' + d.project + '|' + d.boq;
+        if (bx.seen[k]) return;
+        bx.seen[k] = 1; bx.boq.push({ d: d, bs: hit.bs, over: over });
+      });
+    }
+  });
+  Object.keys(out).forEach(function (em) {
+    var bx = out[em];
+    if (!bx.wait.length && !bx.rej.length && !bx.boq.length) return;
+    if (bdwMail_(em, bdwNotifySubject_(bx), bdwNotifyHtml_(bx, st))) sent++;
+  });
+  if (finals.length) sent += bdwSendFinals_(finals, users, st);
+  return sent;
+}
+
+function bdwNotifySubject_(bx) {
+  var one = function (x) { return BDW.TYPE_NAME[x.d.type] + ' ' + x.d.id; };
+  if (bx.wait.length) return 'مستني قرارك: ' + (bx.wait.length === 1 ? one(bx.wait[0]) : bdwCount_(bx.wait.length, 'doc'));
+  if (bx.rej.length) return 'اترفض ' + (bx.rej.length === 1 ? one(bx.rej[0]) : bdwCount_(bx.rej.length, 'doc'));
+  return 'تنبيه: ' + bx.boq[0].over.name + ' عدّى كمية المقايسة';
+}
+function bdwNotifyHtml_(bx, st) {
+  var url = st.appUrl, h = '', row = function (x, extra) {
+    return '<tr><td style="padding:6px 0;border-bottom:1px solid #E5E7EB"><a href="' + bdwEsc_(url + '#doc/' + encodeURIComponent(x.d.key)) + '" style="color:#14213D;font-weight:bold">' +
+      bdwEsc_(BDW.TYPE_NAME[x.d.type] + ' ' + x.d.id) + '</a> <span style="color:#6B7280">— ' + bdwEsc_(bdwDayLabel_(x.d.date)) + '</span><br>' +
+      '<span style="color:#374151">' + bdwEsc_(bdwDocLine_(x.d, x.bs)) + '</span>' + (extra ? '<br><span style="color:#9A3412">' + extra + '</span>' : '') + '</td></tr>';
+  };
+  var table = function (title, rows) { return '<div style="font-weight:bold;margin:14px 0 4px">' + bdwEsc_(title) + '</div><table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">' + rows + '</table>'; };
+  if (bx.wait.length) h += table('مستني قرارك (' + bx.wait.length + ')', bx.wait.map(function (x) {
+    return row(x, x.d.type === 'stmt' ? bdwEsc_(x.d.techOk ? 'الاعتماد الفني تمّ — مستني الاعتماد النهائي' : 'مستني الاعتماد الفني') : '');
+  }).join(''));
+  if (bx.rej.length) h += table('اترفض من مستنداتك (' + bx.rej.length + ')', bx.rej.map(function (x) {
+    return row(x, bdwEsc_('السبب: ' + x.reason + (x.note ? ' — ' + x.note : '') + ' — ' + x.by) + '<br>' + bdwEsc_('عدّله من «سجلاتي» وابعته تاني.'));
+  }).join(''));
+  if (bx.boq.length) h += table('تنبيه المقايسة', bx.boq.map(function (x) {
+    var o = x.over;
+    return row(x, bdwEsc_(o.name + ': المنفّذ ' + bdwQtyTxt_(o.done, o.unit) + ' من ' + bdwQtyTxt_(o.boq, o.unit) + ' في المقايسة (' + Math.round(o.pct * 100) + '%)'));
+  }).join(''));
+  return bdwMailWrap_('أهلًا ' + bx.u.name + '،', h, url);
+}
+
+/* كل يوم حوالي 9 مساءً (مشغّل من setupNotifications) */
+function bdwDailySummary() {
+  if (PropertiesService.getScriptProperties().getProperty('NOTIFY_OFF') === '1') return 0;
+  var st = bdwSettings_(), today = bdwToday_(), sent = 0;
+  var users = bdwUsersAll_().filter(function (u) { return u.prefs.daily; });
+  if (!users.length) return 0;
+  var bsBy = bdwBootstraps_();
+  users.forEach(function (u) {
+    var parts = [], names = [];
+    Object.keys(bsBy).forEach(function (c) {
+      if (!bdwCanSee_(u, c)) return;
+      var s = bdwDay_(bsBy[c], u, st, today);
+      if (s) { parts.push(s); names.push(s.name); }
+    });
+    if (!parts.length) return;
+    var title = 'ملخص يوم ' + bdwDayName_(today) + ' ' + bdwDayLabel_(today);
+    var html = parts.map(function (p) { return (parts.length > 1 ? '<div style="font-weight:bold;margin:14px 0 4px">' + bdwEsc_(p.name) + '</div>' : '') + p.html; }).join('');
+    if (bdwMail_(u.email, title + ' — ' + names.join('، '), bdwMailWrap_(title, html, st.appUrl))) sent++;
+  });
+  return sent;
+}
+/* ملخص مشروع واحد في يوم واحد لمستخدم واحد، أو null لو مفيش حاجة تتقال */
+function bdwDay_(bs, u, st, today) {
+  var code = bs.code, proj = (bs.projects || []).filter(function (p) { return p.code === code; })[0] || { short: code };
+  var live = function (d) { return d.status !== 'ملغى' && d.status !== 'مرفوض'; };
+  var isToday = function (d) { return d.date === today || bdwIso_(new Date(d.at)) === today; };
+  var ds = (bs.docs || []).filter(function (d) { return d.project === code; });
+  var sum = function (a, f) { return a.reduce(function (s, x) { return s + (Number(f(x)) || 0); }, 0); };
+  var pm = ds.filter(function (d) { return d.type === 'permit' && live(d) && isToday(d); });
+  var qt = ds.filter(function (d) { return d.type === 'qty' && live(d) && isToday(d); });
+  var ex = ds.filter(function (d) { return d.type === 'exp' && live(d) && isToday(d); });
+  var vo = (bs.vouchers || []).filter(function (v) { return v[2] === today && v[10] !== 'ملغى' && v[10] !== 'مرفوض'; });
+  var pay = vo.filter(function (v) { return v[1] === 'صرف'; }), rec = vo.filter(function (v) { return v[1] === 'قبض'; });
+  var pend = ds.filter(bdwPending_);
+  var mine = pend.filter(function (d) { return d.by !== u.email && bdwAwaits_(d, u.role, st); });
+  if (!pm.length && !qt.length && !ex.length && !vo.length && !pend.length) return null;
+  var overs = [], seen = {};
+  qt.forEach(function (d) {
+    if (seen[d.boq]) return; seen[d.boq] = 1;
+    var o = bdwOverBoq_(bs, d.boq);
+    if (o) overs.push(d.boq + ': ' + Math.round(o.pct * 100) + '%');
+  });
+  var money = function (n) { return bdwMoney_(n) + ' ج'; }, none = 'مفيش';
+  var oldest = pend.reduce(function (m, d) { return Math.min(m, d.at || Date.now()); }, Date.now()), days = Math.floor((Date.now() - oldest) / 864e5);
+  var rows = [
+    ['التوريدات', pm.length ? bdwCount_(pm.length, 'permit') + ' — ' + money(sum(pm, function (d) { return d.price ? d.qty * d.price : 0; })) : none],
+    ['الكميات', qt.length ? bdwCount_(qt.length, 'qty') + (overs.length ? ' — ' + (overs.length === 1 ? 'واحد بيعدّي' : overs.length + ' بيعدّوا') + ' المقايسة (' + overs.join('، ') + ')' : '') : none],
+    ['المصروفات', pay.length ? bdwCount_(pay.length, 'voucher') + ' — ' + money(sum(pay, function (v) { return v[5]; })) : none]
+  ];
+  if (rec.length) rows.push(['المقبوض', bdwCount_(rec.length, 'voucher') + ' — ' + money(sum(rec, function (v) { return v[5]; }))]);
+  if (ex.length) rows.push(['مصروفات العهدة', bdwCount_(ex.length, 'exp') + ' — ' + money(sum(ex, function (d) { return d.amount; }))]);
+  rows.push(['بانتظار الاعتماد', pend.length ? bdwCount_(pend.length, 'doc') + ' — ' + 'أقدمها بقاله ' + (days > 0 ? bdwCount_(days, 'day') : 'أقل من يوم') : none]);
+  if (u.role !== 'site') rows.push(['بانتظار قرارك', mine.length ? mine.slice(0, 8).map(function (d) { var a = bdwDocAmount_(d); return d.id + (a ? ' — ' + money(a) : ''); }).join('، ') +
+    (mine.length > 8 ? '، و' + (mine.length - 8) + ' كمان' : '') : none]);
+  var html = '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">' + rows.map(function (r) {
+    return '<tr><td style="padding:6px 0 6px 12px;border-bottom:1px solid #E5E7EB;color:#6B7280;white-space:nowrap;vertical-align:top">' + bdwEsc_(r[0]) +
+      '</td><td style="padding:6px 0;border-bottom:1px solid #E5E7EB;font-weight:bold">' + bdwEsc_(r[1]) + '</td></tr>';
+  }).join('') + '</table>';
+  return { name: proj.short || proj.name || code, html: html };
+}
+
+/* ---- أدوات الإيميل ---- */
+function bdwMail_(to, subject, html, attachments) {
+  try {
+    var o = { to: to, subject: subject, htmlBody: html, body: bdwHtmlText_(html), name: 'منظومة البديوي' };
+    if (attachments && attachments.length) o.attachments = attachments;
+    MailApp.sendEmail(o);
+    return true;
+  } catch (e) {
+    console.error('mail ' + to + ': ' + e);
+    return false;
+  }
+}
+function bdwMailWrap_(title, inner, url) {
+  return '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;font-size:14px;line-height:1.8;color:#14213D;max-width:560px;text-align:right">' +
+    '<div style="font-size:16px;font-weight:bold;margin:0 0 6px">' + bdwEsc_(title) + '</div>' + inner +
+    '<p style="margin:18px 0 6px"><a href="' + bdwEsc_(url + '#inbox') + '" style="background:#14213D;color:#FFFFFF;text-decoration:none;padding:8px 18px;border-radius:8px;display:inline-block">افتح التطبيق</a></p>' +
+    '<p style="color:#6B7280;font-size:12px;margin:10px 0 0">الإيميلات دي بتتوقف من «إعداداتي» في التطبيق. — منظومة البديوي</p></div>';
+}
+function bdwHtmlText_(html) {
+  return String(html).replace(/<a [^>]*href="([^"]*)"[^>]*>افتح التطبيق<\/a>/g, 'افتح التطبيق: $1').replace(/<br\s*\/?>/g, '\n').replace(/<\/(tr|div|p|table)>/g, '\n')
+    .replace(/<\/td><td[^>]*>/g, ': ').replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    .replace(/\n{3,}/g, '\n\n').trim();
+}
+function bdwEsc_(s) { return String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function bdwMoney_(n) {
+  n = Math.round(Number(n) || 0);
+  var s = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return n < 0 ? '(' + s + ')' : s;
+}
+function bdwQtyTxt_(q, unit) { var n = Math.round((Number(q) || 0) * 100) / 100; return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (unit ? ' ' + unit : ''); }
+var BDW_NOUN = { permit: ['إذن', 'إذنين', 'إذونات'], qty: ['محضر', 'محضرين', 'محاضر'], voucher: ['سند', 'سندين', 'سندات'], exp: ['مصروف', 'مصروفين', 'مصروفات'],
+  doc: ['مستند', 'مستندين', 'مستندات'], day: ['يوم', 'يومين', 'أيام'] };
+function bdwCount_(n, k) { var w = BDW_NOUN[k]; return n === 1 ? w[0] + ' واحد' : n === 2 ? w[1] : n + ' ' + (n <= 10 ? w[2] : w[0]); }
+var BDW_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+function bdwDayLabel_(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? Number(m[3]) + ' ' + BDW_MONTHS[Number(m[2]) - 1] : ''; }
+function bdwDayName_(iso) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'][new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()] : '';
+}
+function bdwNames_(bs) {
+  if (bs._names) return bs._names;
+  var n = { party: {}, item: {}, unit: {} };
+  (bs.parties || []).forEach(function (p) { n.party[p[0]] = p[1]; });
+  (bs.items || []).concat(bs.subItems || []).forEach(function (i) { n.item[i[0]] = i[1]; n.unit[i[0]] = i[2]; });
+  (bs.boq || []).forEach(function (b) { n.item[b[0]] = b[1]; n.unit[b[0]] = b[2]; });
+  return (bs._names = n);
+}
+function bdwDocAmount_(d) {
+  if (d.type === 'permit') return d.price ? d.qty * d.price : 0;
+  if (d.type === 'stmt') return d.net || 0;
+  return d.amount || 0;
+}
+function bdwDocLine_(d, bs) {
+  var nm = bdwNames_(bs), money = function (n) { return bdwMoney_(n) + ' ج'; };
+  if (d.type === 'permit') return [nm.party[d.party] || d.party, nm.item[d.item] || d.item, bdwQtyTxt_(d.qty, nm.unit[d.item]), d.price ? money(d.qty * d.price) : 'بدون سعر'].filter(String).join(' — ');
+  if (d.type === 'qty') return [nm.item[d.boq] || d.boq, bdwQtyTxt_(d.qty, nm.unit[d.boq]), d.exec && d.exec !== 'ذاتي' ? (nm.party[d.exec] || d.exec) : 'تنفيذ ذاتي'].join(' — ');
+  if (d.type === 'exp') return [d.cat, d.desc, money(d.amount)].filter(String).join(' — ');
+  if (d.type === 'voucher') return [nm.party[d.party] || d.party || '', money(d.amount), d.notes].filter(String).join(' — ');
+  if (d.type === 'stmt') return [(d.kind === BDW.CLIENT ? 'عميل: ' : 'مقاول باطن: ') + (nm.party[d.party] || d.party), 'الصافي ' + money(d.net)].join(' — ');
+  return '';
+}
+
+/* ---- التشغيل والإيقاف (من المحرر) ---- */
+function setupNotifications() {
+  var ss = bdwSS_(), props = PropertiesService.getScriptProperties(), C = BDW.C.users;
+  var sh = ss.getSheetByName(BDW.S.users);
+  if (!sh) throw new Error('شغّل setupApi الأول.');
+  if (!String(sh.getRange(3, C.approve).getValue()).trim()) {
+    sh.getRange(3, C.approve, 1, 2).setValues([['إشعارات الاعتماد', 'الملخص اليومي']]).setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#14213D').setHorizontalAlignment('center').setWrap(true);
+    sh.setColumnWidth(C.approve, 120); sh.setColumnWidth(C.daily, 110);
+  }
+  sh.getRange(BDW.FIRST, C.approve, 500, 2).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['نعم', 'لا'], true).setAllowInvalid(false).build());
+  var set = ss.getSheetByName(BDW.S.settings);
+  if (set && !bdwRows_(set, 1).some(function (r) { return String(r.v[0]).trim() === BDW.SET.appUrl; })) {
+    set.getRange(bdwNextRow_(set), 1, 1, 3).setValues([[BDW.SET.appUrl, BDW.APP_URL, 'الرابط اللي بيتحط في إيميلات الإشعارات والملخص اليومي.']]);
+  }
+  props.setProperty('NOTIFY_SINCE', String(Date.now()));
+  props.setProperty('NOTIFY_OFF', '');
+  var msg = 'الإشعارات جاهزة. فاضل مشغّلين من صفحة المشغّلات (الساعة على الشمال) ← Add Trigger:\n' +
+    '1) bdwNotifyTick — Time-driven — Minutes timer — Every 15 minutes.\n2) bdwDailySummary — Time-driven — Day timer — 9pm to 10pm.\n\n' +
+    'كل مستخدم يوقف اللي مش عاوزه من «إعداداتي» في التطبيق، أو من عمودي «إشعارات الاعتماد» و«الملخص اليومي» في «' + BDW.S.users + '».\n' +
+    'وللإيقاف الكامل: شغّل stopNotifications.';
+  try { SpreadsheetApp.getUi().alert('الإشعارات ✅', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) { console.log(msg); }
+}
+function stopNotifications() {
+  PropertiesService.getScriptProperties().setProperty('NOTIFY_OFF', '1');
+  var msg = 'وقفت الإشعارات والملخص اليومي. للتشغيل تاني: setupNotifications.';
+  try { SpreadsheetApp.getUi().alert('الإشعارات', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) { console.log(msg); }
+}
+
+/* ======================= PDF المستخلص والبريد (6.1) ======================= */
+
+/* المستخلص بيتكتب في ورقة «طباعة المستخلص» جوه ملف البيانات، والشيت بيصدّرها PDF بحجم A4 (العربي واتجاهه مظبوطين).
+   الاعتماد النهائي: الـPDF بيتحفظ في فولدر «مستخلصات PDF» ويتبعت بالبريد للمالك ومحاسب المشروع مع أول ربع ساعة.
+   وزرار «PDF المستخلص» في التطبيق بيطلع نفس الملف لأي مستخلص مش ملغى، وعليه حالته. */
+function bdwStmtPdfAct_(me, b) {
+  if (['eng', 'acc', 'owner', 'admin'].indexOf(me.role) < 0) throw bdwErr_('forbidden', 'الـPDF للمكتب والمهندس والمالك.');
+  var id = String(b.id || '').trim(), C = BDW.C.stmts, hit = bdwFindRow_(bdwSheet_(BDW.S.stmts), id, C.n);
+  if (!hit) throw bdwErr_('not_found', 'المستخلص ' + id + ' مش موجود في الشيت.');
+  var project = String(hit.v[C.project - 1]).trim();
+  if (!bdwCanSee_(me, project)) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
+  var bs = bdwBootstrap_(me, project);
+  bs.code = project;
+  var d = bs.docs.filter(function (x) { return x.type === 'stmt' && x.id === id; })[0];
+  if (!d || d.status === 'ملغى') throw bdwErr_('invalid', 'المستخلص ده ملغى، ومالوش PDF.');
+  var lock = LockService.getScriptLock(), blob = null;
+  if (!lock.tryLock(30000)) throw bdwErr_('busy', 'السكريبت مشغول دلوقتي. جرّب تاني بعد ثواني.');
+  try { blob = bdwStmtPdf_(bs, d); } finally { lock.releaseLock(); }
+  return { ok: true, name: blob.getName(), data: Utilities.base64Encode(blob.getBytes()) };
+}
+
+/* بنود المستخلص من المحاضر المربوطة بيه، متجمّعة بالبند والفئة */
+function bdwStmtLines_(bs, d) {
+  var client = d.kind === BDW.CLIENT, col = client ? 9 : 10, by = {}, order = [];
+  (bs.qtyAll || []).forEach(function (q) {
+    if (q[col] !== d.id) return;
+    var rate = client ? q[4] : q[7], k = q[2] + '|' + rate;
+    if (!by[k]) { by[k] = { item: q[2], rate: rate, qty: 0, value: 0, n: 0 }; order.push(k); }
+    by[k].qty += Number(q[3]) || 0; by[k].value += Number(client ? q[5] : q[8]) || 0; by[k].n++;
+  });
+  return order.map(function (k) { return by[k]; });
+}
+
+function bdwStmtPdf_(bs, d) {
+  var ss = bdwSS_(), sh = ss.getSheetByName(BDW.S.print), W = 6;
+  if (!sh) {
+    sh = ss.insertSheet(BDW.S.print, ss.getNumSheets());
+    try { sh.protect().setDescription('ورقة طباعة المستخلص — السكريبت بيكتب فيها').setWarningOnly(true); } catch (e) { }
+  }
+  sh.setRightToLeft(true);
+  var nm = bdwNames_(bs), client = d.kind === BDW.CLIENT, L = bdwStmtLines_(bs, d), tz = bdwTz_();
+  var proj = (bs.projects || []).filter(function (p) { return p.code === d.project; })[0] || { name: d.project };
+  var day = function (t) { return t ? Utilities.formatDate(new Date(t), tz, 'yyyy-MM-dd') : ''; };
+  var rows = [], kinds = [];
+  var add = function (r, kind) { r = r.slice(); while (r.length < W) r.push(''); rows.push(r); kinds.push(kind || ''); };
+  add(['مؤسسة محمد بديوي للإنشاءات ورصف الطرق'], 'org');
+  add([(client ? 'مستخلص أعمال مقدَّم للعميل' : 'مستخلص أعمال مقاول باطن') + ' رقم ' + d.id + (d.extNo && d.extNo !== 'جارٍ' ? ' — رقم ' + d.extNo + ' لدى الجهة' : ' — جارٍ')], 'title');
+  add(['المشروع: ' + (proj.name || d.project)], 'wide');
+  add([(client ? 'العميل: ' : 'المقاول: ') + (nm.party[d.party] || d.party), '', '', 'التاريخ: ' + d.date, '', 'الحالة: ' + d.status], 'meta');
+  add([''], 'gap');
+  add(['م', 'البند', 'الوحدة', 'الكمية', 'الفئة', 'القيمة'], 'head');
+  L.forEach(function (g, i) { add([i + 1, nm.item[g.item] || g.item, nm.unit[g.item] || '', g.qty, g.rate === null || g.rate === undefined ? 'بلا فئة' : g.rate, g.value], 'line'); });
+  if (!L.length) add(['', d.works ? 'بنود المستخلص مش مربوطة بمحاضر في المنظومة (مرحَّل من ملف الشركة).' : 'مفيش محاضر مربوطة بالمستخلص.'], 'note');
+  add([''], 'gap');
+  add(['', '', '', '', 'إجمالي الأعمال', d.works || 0], 'tot');
+  if (d.plus) add(['', '', '', '', 'إضافات / تعلية', d.plus], 'tot');
+  add(['', '', '', '', 'المحتجز' + (d.retPct ? ' (' + Math.round(d.retPct * 1000) / 10 + '%)' : ''), -(d.ret || 0)], 'tot');
+  if (d.adv) add(['', '', '', '', 'استرداد دفعة مقدمة', -d.adv], 'tot');
+  if (d.ded) add(['', '', '', '', 'خصومات أخرى', -d.ded], 'tot');
+  add(['', '', '', '', 'الصافي المستحق', d.net || 0], 'net');
+  add([''], 'gap');
+  var final = d.status === 'معتمد' || d.status === 'مصروف';
+  add(['الاعتماد الفني: ' + (d.techOk || final ? (d.techBy || '—') + (d.techAt ? ' — ' + day(d.techAt) : '') : 'لسه'), '', '',
+    'الاعتماد النهائي: ' + (final ? (d.decidedBy || '—') + (d.decidedAt ? ' — ' + day(d.decidedAt) : '') : 'لسه')], 'appr');
+  add([''], 'gap');
+  add(['المحاسب', '', 'المهندس', '', 'المالك'], 'sign');
+  add(['....................', '', '....................', '', '....................'], 'sign');
+  add(['أُنشئ من منظومة البديوي — ' + Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm')], 'foot');
+
+  sh.getRange(1, 1, Math.max(sh.getMaxRows(), rows.length), W).breakApart();
+  sh.clear();
+  var all = sh.getRange(1, 1, rows.length, W);
+  all.setValues(rows).setFontFamily('Cairo').setFontSize(10).setFontColor('#14213D').setVerticalAlignment('middle').setHorizontalAlignment('right').setWrap(true);
+  [36, 250, 64, 84, 110, 116].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+  var grid = SpreadsheetApp.BorderStyle.SOLID, firstLine = 0, lastLine = 0;
+  kinds.forEach(function (k, i) {
+    var r = i + 1, row = sh.getRange(r, 1, 1, W);
+    if (k === 'org') row.merge().setFontSize(14).setFontWeight('bold').setHorizontalAlignment('center');
+    else if (k === 'title') row.merge().setFontSize(12).setFontWeight('bold').setHorizontalAlignment('center');
+    else if (k === 'wide') row.merge().setHorizontalAlignment('center');
+    else if (k === 'meta') { sh.getRange(r, 1, 1, 3).merge(); sh.getRange(r, 4, 1, 2).merge(); row.setFontWeight('bold'); }
+    else if (k === 'head') row.setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#14213D').setHorizontalAlignment('center');
+    else if (k === 'line') { if (!firstLine) firstLine = r; lastLine = r; }
+    else if (k === 'note') sh.getRange(r, 2, 1, W - 1).merge().setFontColor('#6B7280');
+    else if (k === 'tot') { sh.getRange(r, 5).setFontWeight('bold'); sh.getRange(r, 6).setNumberFormat('#,##0;(#,##0)'); }
+    else if (k === 'net') { sh.getRange(r, 5, 1, 2).setFontWeight('bold').setFontSize(11).setBackground('#EEF2F7'); sh.getRange(r, 6).setNumberFormat('#,##0;(#,##0)'); }
+    else if (k === 'appr') { sh.getRange(r, 1, 1, 3).merge(); sh.getRange(r, 4, 1, 3).merge(); }
+    else if (k === 'sign') { sh.getRange(r, 1, 1, 2).merge(); sh.getRange(r, 3, 1, 2).merge(); sh.getRange(r, 5, 1, 2).merge(); row.setHorizontalAlignment('center'); }
+    else if (k === 'foot') row.merge().setFontSize(8).setFontColor('#6B7280').setHorizontalAlignment('center');
+  });
+  var head = kinds.indexOf('head') + 1;
+  if (firstLine) {
+    sh.getRange(firstLine, 4, lastLine - firstLine + 1, 2).setNumberFormat('#,##0.##');
+    sh.getRange(firstLine, 6, lastLine - firstLine + 1, 1).setNumberFormat('#,##0');
+    sh.getRange(firstLine, 1, lastLine - firstLine + 1, 1).setHorizontalAlignment('center');
+  }
+  sh.getRange(head, 1, (lastLine || head) - head + 1, W).setBorder(true, true, true, true, true, true, '#94A3B8', grid);
+  SpreadsheetApp.flush();
+
+  var url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=pdf&gid=' + sh.getSheetId() + '&range=' + encodeURIComponent('A1:F' + rows.length) +
+    '&size=A4&portrait=true&fitw=true&gridlines=false&printtitle=false&sheetnames=false&pagenum=UNDEFINED&fzr=false&horizontal_alignment=CENTER' +
+    '&top_margin=0.6&bottom_margin=0.6&left_margin=0.5&right_margin=0.5';
+  var res = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw bdwErr_('server', 'الـPDF ما اتعملش دلوقتي. جرّب تاني بعد دقيقة.');
+  return res.getBlob().setName('مستخلص ' + d.id + ' — ' + (nm.party[d.party] || d.party) + ' — ' + d.date + '.pdf');
+}
+
+/* فولدر «مستخلصات PDF» جنب ملف البيانات (بيتعمل أول مرة) */
+function bdwPdfFolder_() {
+  var props = PropertiesService.getScriptProperties(), id = props.getProperty('STMT_PDF_FOLDER'), f = null;
+  if (id) { try { f = DriveApp.getFolderById(id); } catch (e) { f = null; } }
+  if (!f) {
+    f = DriveApp.createFolder('مستخلصات PDF — منظومة البديوي');
+    try { var parent = DriveApp.getFileById(bdwSS_().getId()).getParents(); if (parent.hasNext()) f.moveTo(parent.next()); } catch (e) { }
+    props.setProperty('STMT_PDF_FOLDER', f.getId());
+  }
+  return f;
+}
+
+/* مع ربع الساعة: كل مستخلص اتعتمد نهائي يطلع PDF يتحفظ ويتبعت للمالك ومحاسب المشروع */
+function bdwSendFinals_(finals, users, st) {
+  var sent = 0;
+  finals.forEach(function (f) {
+    var x = f.d, blob = null, lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) return;
+    try { blob = bdwStmtPdf_(f.bs, x); } catch (err) { console.error('pdf ' + x.id + ': ' + (err && err.message || err)); } finally { lock.releaseLock(); }
+    if (!blob) return;
+    try { bdwPdfFolder_().createFile(blob); } catch (err) { console.error('pdf folder: ' + err); }
+    var nm = bdwNames_(f.bs), party = nm.party[x.party] || x.party;
+    users.forEach(function (u) {
+      if ((u.role !== 'owner' && u.role !== 'acc') || !u.prefs.approve || !bdwCanSee_(u, x.project)) return;
+      var html = '<p style="margin:6px 0">' + bdwEsc_('المستخلص ' + x.id + ' (' + (x.kind === BDW.CLIENT ? 'العميل' : 'مقاول باطن') + ': ' + party + ') اتعتمد نهائي' +
+        (x.decidedBy ? ' من ' + x.decidedBy : '') + (x.decidedAt ? ' يوم ' + bdwDayLabel_(bdwIso_(new Date(x.decidedAt))) : '') + '.') + '</p>' +
+        '<p style="margin:6px 0;font-weight:bold">' + bdwEsc_('الصافي المستحق: ' + bdwMoney_(x.net) + ' ج') + '</p>' +
+        '<p style="margin:6px 0">' + bdwEsc_('الـPDF مرفق، ونسخة منه محفوظة في فولدر «مستخلصات PDF».') + '</p>';
+      if (bdwMail_(u.email, 'اتعتمد نهائي: مستخلص ' + x.id + ' — ' + party, bdwMailWrap_('أهلًا ' + u.name + '،', html, st.appUrl), [blob])) sent++;
+    });
+  });
+  return sent;
 }
 
 /* ======================= الإعداد (يتشغّل مرة من المحرر) ======================= */

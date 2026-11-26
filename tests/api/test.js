@@ -254,6 +254,204 @@ ok('statement paid from its referenced voucher', b.docs.find(d => d.id === 'SS-0
 ok('dashboard follows the new vouchers', b.dash.subPaid === 255000 && b.dash.received === 1500000 && b.dash.netCash === 1500000 - 317000, b.dash);
 ok('contractor stats follow', b.pstats['S-001'].p === 255000 && b.pstats['S-001'].nv === 4 && b.pstats['S-001'].w === 455000, b.pstats['S-001']);
 ok('phase 2 actions logged', L.getLastRow() - 3 === 27, L.getLastRow() - 3);
+
+/* ---- 6.2 الإشعارات والملخص اليومي ---- */
+const U = ss.getSheetByName('المستخدمين');
+b = call({ action: 'bootstrap', idToken: 'T_SITE' });
+ok('prefs default: approvals on, daily off for site', b.user.prefs && b.user.prefs.approve === true && b.user.prefs.daily === false, b.user);
+b = call({ action: 'bootstrap', idToken: 'T_OWNER' });
+ok('prefs default: owner gets the daily summary', b.user.prefs.approve === true && b.user.prefs.daily === true, b.user);
+ok('prefs needs a value', call({ action: 'prefs', idToken: 'T_SITE' }).error === 'invalid');
+r = call({ action: 'prefs', idToken: 'T_SITE', approve: false });
+ok('site turns approval emails off', r.ok && r.prefs.approve === false && r.prefs.daily === false && U.get(5, 7) === 'لا', [r, U.get(5, 7)]);
+ok('prefs follow the user to any device', call({ action: 'bootstrap', idToken: 'T_SITE' }).user.prefs.approve === false);
+
+env.ctx.setupNotifications();
+ok('setup adds the two prefs columns', U.get(3, 7) === 'إشعارات الاعتماد' && U.get(3, 8) === 'الملخص اليومي' && JSON.stringify(U.validators[7]) === JSON.stringify(['نعم', 'لا']));
+ok('setup adds the app link setting', (() => { for (let i = 4; i <= settings.getLastRow(); i++) if (settings.get(i, 1) === 'رابط التطبيق') return /^https:\/\/kareem20607-ess\.github\.io\/bedewy-app\/$/.test(settings.get(i, 2)); return false; })());
+ok('setup makes no triggers itself (no new permission)', env.triggers.length === 0 && !/ScriptApp\.(newTrigger|getProjectTriggers|deleteTrigger)/.test(require('fs').readFileSync(SCRIPT, 'utf8')));
+env.ctx.setupNotifications();
+ok('setup twice adds no second app-link row', (() => { let n = 0; for (let i = 4; i <= settings.getLastRow(); i++) if (settings.get(i, 1) === 'رابط التطبيق') n++; return n === 1; })());
+ok('setup starts from now', Number(env.props.NOTIFY_SINCE) > Date.now() - 60000);
+
+const mailsFrom = (n) => env.mails.slice(n);
+const to = (list, email) => list.filter(m => m.to === email);
+let m0 = env.mails.length;
+ok('tick with nothing new sends nothing', env.ctx.bdwNotifyTick() === 0 && env.mails.length === m0);
+env.props.NOTIFY_SINCE = '';
+ok('tick without a start point only starts', env.ctx.bdwNotifyTick() === 0 && Number(env.props.NOTIFY_SINCE) > 0 && env.mails.length === m0);
+
+/* إذن جديد من الموقع: المحاسب والمدير يوصلهم، والموقع لأ */
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+r = call({ action: 'submit', idToken: 'T_SITE', op: permitOp('k-ntf-1', { qty: 5, price: 2000 }) });
+const ntfPermit = r.id;
+m0 = env.mails.length;
+let sent = env.ctx.bdwNotifyTick(), ms = mailsFrom(m0);
+ok('new permit: accountant and admin are told', sent === 2 && to(ms, 'acc@test.dev').length === 1 && to(ms, 'kareem@test.dev').length === 1 && !to(ms, 'site@test.dev').length && !to(ms, 'owner@test.dev').length, ms.map(m => [m.to, m.subject]));
+const am = to(ms, 'acc@test.dev')[0] || {};
+ok('email names the permit and links to it', am.subject === 'مستني قرارك: إذن توريد ' + ntfPermit && am.htmlBody.indexOf(ntfPermit) > 0 &&
+  am.htmlBody.indexOf('https://kareem20607-ess.github.io/bedewy-app/#doc/k-ntf-1') > 0 && /مورد خرسانة — خرسانة جاهزة 250 — 5 م3 — 10,000 ج/.test(am.htmlBody) && am.name === 'منظومة البديوي', am.subject);
+ok('email is right-to-left with a plain-text copy', /dir="rtl"/.test(am.htmlBody) && /افتح التطبيق: https:/.test(am.body) && am.body.indexOf('<') < 0, am.body);
+m0 = env.mails.length;
+ok('same events are never sent twice', env.ctx.bdwNotifyTick() === 0 && env.mails.length === m0);
+
+/* الرفض: صاحب المستند قافل الإشعارات، وبعدين فاتحها */
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+ok('accountant rejects the permit', call({ action: 'reject', idToken: 'T_ACC', type: 'permit', id: ntfPermit, reason: 'السعر غير مطابق', note: 'آخر سعر 1950' }).ok);
+m0 = env.mails.length; env.ctx.bdwNotifyTick();
+ok('rejection not sent while the owner of the doc turned emails off', !to(mailsFrom(m0), 'site@test.dev').length);
+call({ action: 'prefs', idToken: 'T_SITE', approve: true });
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+r = call({ action: 'submit', idToken: 'T_SITE', op: permitOp('k-ntf-2', { qty: 3 }) });
+const ntfPermit2 = r.id;
+call({ action: 'reject', idToken: 'T_ACC', type: 'permit', id: ntfPermit2, reason: 'صورة غير واضحة', note: '' });
+m0 = env.mails.length; env.ctx.bdwNotifyTick(); ms = mailsFrom(m0);
+const sm = to(ms, 'site@test.dev')[0] || {};
+ok('rejection reaches the site accountant with the reason', sm.subject === 'اترفض إذن توريد ' + ntfPermit2 && /السبب: صورة غير واضحة — عادل المحاسب/.test(sm.htmlBody) && /عدّله من «سجلاتي»/.test(sm.htmlBody), sm.subject);
+ok('a doc rejected before the tick is not announced as waiting', !ms.some(m => m.to === 'acc@test.dev' && m.htmlBody.indexOf(ntfPermit2) > 0), ms.map(m => [m.to, m.subject]));
+
+/* سند فوق الحد: المالك بس */
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+r = call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-ntf-v1', { amount: 90000 }) });
+const ntfV = r.id;
+m0 = env.mails.length; env.ctx.bdwNotifyTick(); ms = mailsFrom(m0);
+ok('voucher over the limit goes to the owner only', ms.length === 1 && ms[0].to === 'owner@test.dev' && ms[0].subject === 'مستني قرارك: سند صرف ' + ntfV && /90,000 ج/.test(ms[0].htmlBody), ms.map(m => [m.to, m.subject]));
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-ntf-v2', { amount: 1000 }) });
+m0 = env.mails.length; env.ctx.bdwNotifyTick();
+ok('voucher approved on entry tells nobody', env.mails.length === m0);
+
+/* محضر فوق المقايسة: المهندس (قرار + تنبيه) والمالك (تنبيه) */
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+r = call({ action: 'submit', idToken: 'T_SITE', op: qtyOp('k-ntf-q1', { qty: 50 }) });
+const ntfQ = r.id;
+m0 = env.mails.length; env.ctx.bdwNotifyTick(); ms = mailsFrom(m0);
+const em = to(ms, 'eng@test.dev')[0] || {}, om = to(ms, 'owner@test.dev')[0] || {};
+ok('qty waits for the engineer, with the BOQ warning', em.subject === 'مستني قرارك: محضر كميات ' + ntfQ && /تنبيه المقايسة/.test(em.htmlBody) && /طبقة إحلال: المنفّذ [\d,.]+ م3 من 9,000 م3 في المقايسة \(\d+%\)/.test(em.htmlBody), em.subject);
+ok('owner gets the BOQ warning only', om.subject === 'تنبيه: طبقة إحلال عدّى كمية المقايسة' && om.htmlBody.indexOf('مستني قرارك') < 0, om.subject);
+ok('site (who entered it) and accountant get nothing', !to(ms, 'site@test.dev').length && !to(ms, 'acc@test.dev').length);
+
+/* المستخلص: إرسال للمراجعة ← المهندس، واعتماد فني ← المالك والمدير */
+call({ action: 'approve', idToken: 'T_ENG', type: 'qty', id: ntfQ });
+r = stNew('T_ACC', 'k-ntf-s1', { kind: 'عميل', party: 'C-001', qty: [ntfQ], retPct: 5, extNo: '3' });
+const ntfS = r.id;
+ok('client statement from the approved qty', r.ok && /^CS-/.test(ntfS), r);
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+call({ action: 'stmtSend', idToken: 'T_ACC', id: ntfS });
+m0 = env.mails.length; env.ctx.bdwNotifyTick(); ms = mailsFrom(m0);
+ok('sent statement waits for the engineer only', ms.length === 1 && ms[0].to === 'eng@test.dev' && ms[0].subject === 'مستني قرارك: مستخلص ' + ntfS && /مستني الاعتماد الفني/.test(ms[0].htmlBody) && /عميل: جهة مالكة تجريبية — الصافي/.test(ms[0].htmlBody), ms.map(m => [m.to, m.subject]));
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+call({ action: 'approveTech', idToken: 'T_ENG', type: 'stmt', id: ntfS });
+m0 = env.mails.length; env.ctx.bdwNotifyTick(); ms = mailsFrom(m0);
+ok('after technical approval: owner and admin', ms.length === 2 && to(ms, 'owner@test.dev').length === 1 && to(ms, 'kareem@test.dev').length === 1 && /الاعتماد الفني تمّ/.test(ms[0].htmlBody), ms.map(m => [m.to, m.subject]));
+
+/* أكتر من مستند في نفس الربع ساعة: إيميل واحد */
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+call({ action: 'submit', idToken: 'T_SITE', op: permitOp('k-ntf-3', { qty: 2 }) });
+call({ action: 'submit', idToken: 'T_SITE', op: permitOp('k-ntf-4', { qty: 4 }) });
+call({ action: 'submit', idToken: 'T_SITE', op: expOp('k-ntf-e1', 300) });
+m0 = env.mails.length; env.ctx.bdwNotifyTick(); ms = mailsFrom(m0);
+const am2 = to(ms, 'acc@test.dev');
+ok('three documents, one email each', am2.length === 1 && am2[0].subject === 'مستني قرارك: 3 مستندات' && /مستني قرارك \(3\)/.test(am2[0].htmlBody), am2.map(m => m.subject));
+env.failTo.add('acc@test.dev');
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+call({ action: 'submit', idToken: 'T_SITE', op: permitOp('k-ntf-5', { qty: 1 }) });
+m0 = env.mails.length; sent = env.ctx.bdwNotifyTick();
+ok('a failing address does not stop the others', sent === 1 && to(mailsFrom(m0), 'kareem@test.dev').length === 1);
+env.failTo.delete('acc@test.dev');
+ok('inactive users get nothing', !env.mails.some(m => m.to === 'off@test.dev'));
+
+/* الملخص اليومي */
+m0 = env.mails.length;
+sent = env.ctx.bdwDailySummary(); ms = mailsFrom(m0);
+const dm = to(ms, 'owner@test.dev')[0] || {};
+const dayLbl = (() => { const [y, mo, d] = today(0).split('-').map(Number); return d + ' ' + ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'][mo - 1]; })();
+ok('daily summary to owner and admin only', sent === 2 && to(ms, 'kareem@test.dev').length === 1 && dm.to === 'owner@test.dev' && !to(ms, 'acc@test.dev').length, ms.map(m => [m.to, m.subject]));
+ok('summary subject: day and project', dm.subject.indexOf('ملخص يوم ') === 0 && dm.subject.indexOf(dayLbl) > 0 && /مشروع تجريبي/.test(dm.subject), dm.subject);
+ok('summary lines', /التوريدات/.test(dm.htmlBody) && /إذونات — [\d,]+ ج/.test(dm.htmlBody) && /الكميات/.test(dm.htmlBody) && /واحد بيعدّي المقايسة \(I-R06: \d+%\)/.test(dm.htmlBody) &&
+  /المصروفات/.test(dm.htmlBody) && /بانتظار الاعتماد/.test(dm.htmlBody) && /مصروفات العهدة/.test(dm.htmlBody), dm.body);
+ok('summary lists what waits for the owner', new RegExp('بانتظار قرارك[\\s\\S]*' + ntfV + ' — 90,000 ج').test(dm.htmlBody) && new RegExp(ntfS).test(dm.htmlBody), dm.body);
+call({ action: 'prefs', idToken: 'T_OWNER', daily: false });
+call({ action: 'prefs', idToken: 'T_ACC', daily: true });
+m0 = env.mails.length; env.ctx.bdwDailySummary(); ms = mailsFrom(m0);
+ok('summary follows the prefs', !to(ms, 'owner@test.dev').length && to(ms, 'acc@test.dev').length === 1 && to(ms, 'kareem@test.dev').length === 1, ms.map(m => m.to));
+env.ctx.stopNotifications();
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+call({ action: 'submit', idToken: 'T_SITE', op: permitOp('k-ntf-6', { qty: 1 }) });
+m0 = env.mails.length;
+ok('stop silences the tick and the summary', env.props.NOTIFY_OFF === '1' && env.ctx.bdwNotifyTick() === 0 && env.ctx.bdwDailySummary() === 0 && env.mails.length === m0);
+env.ctx.setupNotifications();
+ok('setup turns them back on from now', env.props.NOTIFY_OFF === '' && Number(env.props.NOTIFY_SINCE) > Date.now() - 60000 && env.ctx.bdwNotifyTick() === 0);
+
+/* ---- 6.1 PDF المستخلص والبريد ---- */
+ok('site cannot print statements', call({ action: 'stmtPdf', idToken: 'T_SITE', id: ntfS }).error === 'forbidden');
+ok('unknown statement', call({ action: 'stmtPdf', idToken: 'T_ACC', id: 'CS-999' }).error === 'not_found');
+ok('cancelled statement has no PDF', call({ action: 'stmtPdf', idToken: 'T_ACC', id: 'CS-002' }).error === 'invalid');
+r = call({ action: 'stmtPdf', idToken: 'T_ACC', id: ntfS });
+const PR = ss.getSheetByName('طباعة المستخلص');
+const prow = (k) => { for (let i = 1; i <= PR.getLastRow(); i++) if (PR.get(i, 5) === k || String(PR.get(i, 1)).indexOf(k) === 0) return i; return 0; };
+ok('PDF comes back to the app', r.ok && r.name === 'مستخلص ' + ntfS + ' — جهة مالكة تجريبية — ' + today(0) + '.pdf' && Buffer.from(r.data, 'base64').toString().indexOf('%PDF') === 0, r.name);
+ok('print sheet: header and identity', PR && PR.get(1, 1) === 'مؤسسة محمد بديوي للإنشاءات ورصف الطرق' && PR.get(2, 1) === 'مستخلص أعمال مقدَّم للعميل رقم ' + ntfS + ' — رقم 3 لدى الجهة' &&
+  /^المشروع: مشروع تجريبي/.test(PR.get(3, 1)) && PR.get(4, 1) === 'العميل: جهة مالكة تجريبية' && PR.get(4, 6) === 'الحالة: تحت المراجعة', [PR.get(2, 1), PR.get(4, 6)]);
+ok('print sheet: the line from the qty', PR.get(6, 2) === 'البند' && PR.get(7, 1) === 1 && PR.get(7, 2) === 'طبقة إحلال' && PR.get(7, 3) === 'م3' && PR.get(7, 4) === 50 && PR.get(7, 6) === 50 * 270 * 0.75, PR.rows[6]);
+const sRow = (() => { for (let i = 4; i <= SM.getLastRow(); i++) if (SM.get(i, 1) === ntfS) return i; return 0; })();
+ok('print sheet: totals equal the statement row', PR.get(prow('إجمالي الأعمال'), 6) === SM.get(sRow, 9) && PR.get(prow('الصافي المستحق'), 6) === SM.get(sRow, 15) &&
+  PR.get(prow('المحتجز (5%)'), 6) === -SM.get(sRow, 12), [SM.get(sRow, 9), SM.get(sRow, 12), SM.get(sRow, 15)]);
+ok('print sheet: approvals so far', /^الاعتماد الفني: هاني المهندس — \d{4}-\d\d-\d\d$/.test(PR.get(prow('الاعتماد الفني'), 1)) && PR.get(prow('الاعتماد الفني'), 4) === 'الاعتماد النهائي: لسه');
+ok('print sheet is right-to-left with merged header', PR.merges.some(m => m[0] === 1 && m[3] === 6) && PR.merges.some(m => m[0] === 2 && m[3] === 6));
+const ex1 = env.exports[env.exports.length - 1] || '';
+ok('export: that sheet only, its range, A4', ex1.indexOf('/spreadsheets/d/SS-TEST-ID/export?format=pdf&gid=' + PR.getSheetId() + '&range=A1%3AF' + PR.getLastRow()) > 0 && /size=A4&portrait=true&fitw=true/.test(ex1), ex1);
+env.flags.exportFail = true;
+ok('export failure is a clear error', call({ action: 'stmtPdf', idToken: 'T_ACC', id: ntfS }).error === 'server');
+env.flags.exportFail = false;
+
+env.props.NOTIFY_SINCE = String(Date.now() - 1);
+ok('owner gives the final approval', call({ action: 'approve', idToken: 'T_OWNER', type: 'stmt', id: ntfS }).ok);
+m0 = env.mails.length; const f0 = Object.keys(env.files).length;
+sent = env.ctx.bdwNotifyTick(); ms = mailsFrom(m0);
+const fo = to(ms, 'owner@test.dev')[0] || {}, fa = to(ms, 'acc@test.dev')[0] || {};
+ok('final approval: PDF to owner and accountant', sent === 2 && fo.subject === 'اتعتمد نهائي: مستخلص ' + ntfS + ' — جهة مالكة تجريبية' && fa.subject === fo.subject && !to(ms, 'kareem@test.dev').length, ms.map(m => [m.to, m.subject]));
+ok('PDF attached, net in the body', fo.attachments && fo.attachments.length === 1 && /\.pdf$/.test(fo.attachments[0].getName()) && /الصافي المستحق: [\d,]+ ج/.test(fo.htmlBody) && /من الحاج/.test(fo.htmlBody), fo.body);
+ok('PDF saved in the statements folder', Object.keys(env.files).length === f0 + 1 && Object.values(env.files).some(f => f.name === fo.attachments[0].getName()) && !!env.props.STMT_PDF_FOLDER);
+ok('the PDF says approved, by whom', PR.get(4, 6) === 'الحالة: معتمد' && /^الاعتماد النهائي: الحاج — \d{4}-\d\d-\d\d$/.test(PR.get(prow('الاعتماد الفني'), 4)), PR.get(prow('الاعتماد الفني'), 4));
+m0 = env.mails.length;
+ok('final PDF goes out once', env.ctx.bdwNotifyTick() === 0 && env.mails.length === m0);
+
+/* ---- 5.3 أرشيف المستندات ---- */
+ok('site has no archive', call({ action: 'archive', idToken: 'T_SITE', project: 'P-001' }).error === 'forbidden');
+ok('archive needs a project', call({ action: 'archive', idToken: 'T_ENG', project: '' }).error === 'forbidden');
+r = call({ action: 'archive', idToken: 'T_ENG', project: 'P-001' });
+const AR = r.items || [];
+ok('archive: only rows with photos, newest first', r.ok && AR.length > 5 && AR.every(x => x[4]) && !AR.some(x => x[1] === 'SP-0001') && AR.every((x, i) => i === 0 || String(AR[i - 1][2]) >= String(x[2])), AR.slice(0, 3));
+const fp = AR.find(x => x[1] === 'SP-0002');
+ok('form permit with its Drive photo', fp && fp[0] === 'permit' && fp[4] === 'drive:FORMPHOTO0000000000000001' && fp[3] === 'مورد مواسير — مواسير صرف' && fp[6] === 'id:SP-0002' && fp[5] === 'مسجَّل', fp);
+const rp = AR.find(x => x[1] === ntfPermit);
+ok('a rejected permit stays in the archive', rp && rp[5] === 'مرفوض' && rp[6] === 'k-ntf-1' && /^drive:FILE/.test(rp[4]), rp);
+ok('qty and custody expenses in the archive', AR.some(x => x[0] === 'qty' && x[3] === 'طبقة إحلال — 50 — مقاول خامس') && AR.some(x => x[0] === 'exp' && x[3] === 'وقود — سولار لودر — 300 ج'),
+  AR.filter(x => x[0] !== 'permit').slice(0, 4));
+const f0n = env.fetched.length;
+r = call({ action: 'photo', idToken: 'T_ENG', id: rp[4], thumb: true });
+ok('small photo asks Drive for a thumbnail first, then falls back', r.ok && /^data:/.test(r.data) && env.fetched.slice(f0n).some(u => /drive\.google\.com\/thumbnail\?sz=w360&id=FILE/.test(u)), env.fetched.slice(f0n));
+/* ---- 5.2 العرض على الكمبيوتر: السجل الكامل للإذونات ومصروفات العهدة ---- */
+const wrote = () => ss.sheets.reduce((n, sh) => n + sh.writes.length, 0), w0 = wrote();
+ok('site has no full register', call({ action: 'register', idToken: 'T_SITE', project: 'P-001', type: 'permit' }).error === 'forbidden');
+ok('register needs a project', call({ action: 'register', idToken: 'T_ACC', project: '', type: 'permit' }).error === 'forbidden');
+ok('register is for permits and expenses only', call({ action: 'register', idToken: 'T_ACC', project: 'P-001', type: 'voucher' }).error === 'invalid');
+r = call({ action: 'register', idToken: 'T_ACC', project: 'P-001', type: 'permit' });
+const RG = r.rows || [], nP = P.rows.slice(3).filter(x => x[0] && x[2] === 'P-001').length;
+ok('register: every permit row of the project, newest first', r.ok && r.type === 'permit' && RG.length === nP && nP > 5 &&
+  RG.every((x, i) => i === 0 || RG[i - 1][1] > x[1] || (RG[i - 1][1] === x[1] && RG[i - 1][0] >= x[0])), [RG.length, nP]);
+const g1 = RG.find(x => x[0] === 'SP-0001'), g2 = RG.find(x => x[0] === 'SP-0002'), g3 = RG.find(x => x[0] === ntfPermit);
+ok('an old migrated permit: price, total, approved, keyed by its number', g1 && g1[1] === '2026-10-01' && g1[2] === 'V-001' && g1[3] === 'I-C02' && g1[4] === 10 && g1[5] === 1950 &&
+  g1[7] === 'معتمد' && g1[8] === '' && g1[9] === 'id:SP-0001' && g1[10] === 'مرحَّل', g1);
+ok('a permit without a price keeps it empty', g2 && g2[5] === null && g2[7] === 'مسجَّل' && g2[8] === 'drive:FORMPHOTO0000000000000001', g2);
+ok('an app permit carries its key, status and who sent it', g3 && g3[7] === 'مرفوض' && g3[9] === 'k-ntf-1' && g3[10] === 'سعيد الموقع' && /^drive:FILE/.test(g3[8]), g3);
+r = call({ action: 'register', idToken: 'T_OWNER', project: 'P-001', type: 'exp' });
+const RX = r.rows || [], nE = E.rows.slice(3).filter(x => x[0] && x[2] === 'P-001').length;
+const x1 = RX.find(x => x[4] === 'سولار لودر');
+ok('register: every custody expense with its custody number', r.ok && RX.length === nE && nE > 0 && RX.every(x => x[2] === 'CU-001') && x1 && x1[3] === 'وقود' && x1[5] === 300 && /^drive:FILE/.test(x1[7]), [nE, x1]);
+ok('the register writes nothing', wrote() === w0, [w0, wrote()]);
+
 ok('no write ever landed on a formula column', ss.sheets.every(sh => sh.writes.every(w => !(sh.formulas[w[1]] && w[0] >= 4))));
 
 results.forEach(x => console.log(x[0], '-', x[1], x[0] === 'FAIL' && x[2] ? '— ' + x[2].slice(0, 400) : ''));

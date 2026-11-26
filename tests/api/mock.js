@@ -19,12 +19,14 @@ class Range {
   setValues(v) { v.forEach((row, i) => row.forEach((x, j) => this.sh.put(this.r + i, this.c + j, x))); return this; }
   setValue(x) { for (let i = 0; i < this.nr; i++) for (let j = 0; j < this.nc; j++) this.sh.put(this.r + i, this.c + j, x); return this; }
   setDataValidation(rule) { for (let j = 0; j < this.nc; j++) this.sh.validators[this.c + j] = rule.values; return this; }
+  merge() { this.sh.merges.push([this.r, this.c, this.nr, this.nc]); return this; }
+  breakApart() { this.sh.merges = []; return this; }
 }
-['setFontWeight', 'setFontSize', 'setFontColor', 'setBackground', 'setHorizontalAlignment', 'setWrap', 'setNumberFormat'].forEach(m => { Range.prototype[m] = function () { return this; }; });
+['setFontWeight', 'setFontSize', 'setFontColor', 'setBackground', 'setHorizontalAlignment', 'setWrap', 'setNumberFormat', 'setFontFamily', 'setVerticalAlignment', 'setBorder'].forEach(m => { Range.prototype[m] = function () { return this; }; });
 
 class Sheet {
   /* formulas: { عمود: (r) => قيمة } — زي ARRAYFORMULA في الشيت الحقيقي: القيمة محسوبة، والكتابة فوقها بتكسرها */
-  constructor(name, rows, validators, formulas) { this.name = name; this.rows = rows || []; this.validators = validators || {}; this.formulas = formulas || {}; this.writes = []; }
+  constructor(name, rows, validators, formulas) { this.name = name; this.rows = rows || []; this.validators = validators || {}; this.formulas = formulas || {}; this.writes = []; this.merges = []; this.sid = (Sheet.seq = (Sheet.seq || 1000) + 1); }
   raw(r, c) { const row = this.rows[r - 1]; const v = row ? row[c - 1] : undefined; return v === undefined || v === null ? '' : v; }
   get(r, c) {
     const f = this.formulas[c];
@@ -41,6 +43,9 @@ class Sheet {
   getLastRow() { for (let i = this.rows.length - 1; i >= 0; i--) if ((this.rows[i] || []).some(x => x !== '' && x !== undefined && x !== null)) return i + 1; return 0; }
   getRange(r, c, nr, nc) { return new Range(this, r, c, nr, nc); }
   getName() { return this.name; }
+  getSheetId() { return this.sid; }
+  getMaxRows() { return Math.max(1000, this.rows.length); }
+  clear() { this.rows = []; return this; }
   setRightToLeft() { return this; } setFrozenRows() { return this; } setColumnWidth() { return this; }
   protect() { const o = { setDescription() { return o; }, setWarningOnly() { return o; } }; return o; }
 }
@@ -55,7 +60,7 @@ class Spreadsheet {
 
 function makeEnv(ss, opts) {
   opts = opts || {};
-  const props = {}, cache = {}, mails = [], files = {}, folders = {};
+  const props = {}, cache = {}, mails = [], files = {}, folders = {}, triggers = [], failTo = new Set(), exports = [], flags = {}, fetched = [];
   let fileSeq = 0;
   const mkFile = (blob) => { const id = 'FILE' + String(++fileSeq).padStart(24, 'x'); files[id] = { id, blob, name: blob.name }; return id; };
   const fileApi = (id) => {
@@ -72,15 +77,23 @@ function makeEnv(ss, opts) {
     SpreadsheetApp: {
       getActiveSpreadsheet: () => ss, openById: () => ss,
       newDataValidation: () => { const b = { values: null, requireValueInList(v) { b.values = v; return b; }, setAllowInvalid() { return b; }, build() { return { values: b.values }; } }; return b; },
-      getUi: () => { throw new Error('no ui in tests'); }
+      getUi: () => { throw new Error('no ui in tests'); }, flush: () => {}, BorderStyle: { SOLID: 'solid' }
     },
     LockService: { getScriptLock: () => ({ tryLock: () => true, waitLock: () => {}, releaseLock: () => {} }) },
     CacheService: { getScriptCache: () => ({ get: k => (k in cache ? cache[k] : null), put: (k, v) => { cache[k] = v; } }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; } }) },
     UrlFetchApp: {
       fetch: (url) => {
+        fetched.push(url);
         const m = /tokeninfo\?id_token=([^&]+)/.exec(url);
         if (m) { const t = tokens[decodeURIComponent(m[1])]; return { getResponseCode: () => (t ? 200 : 400), getContentText: () => JSON.stringify(t || { error: 'invalid_token' }) }; }
+        if (/\/export\?format=pdf/.test(url)) {
+          exports.push(url);
+          if (flags.exportFail) return { getResponseCode: () => 500, getBlob: () => null };
+          const bytes = Array.from(Buffer.from('%PDF-1.4 test ' + exports.length));
+          const blob = { name: '', bytes, mime: 'application/pdf', getBytes: () => bytes, getContentType: () => 'application/pdf', setName(n) { this.name = n; return this; }, getName() { return this.name; } };
+          return { getResponseCode: () => 200, getBlob: () => blob };
+        }
         return { getResponseCode: () => 404, getBlob: () => null };
       }
     },
@@ -103,12 +116,22 @@ function makeEnv(ss, opts) {
     },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ setMimeType() { return this; }, getContent: () => s }) },
     Session: { getScriptTimeZone: () => TZ, getEffectiveUser: () => ({ getEmail: () => opts.owner || 'kareem@test.dev' }) },
-    MailApp: { sendEmail: (o) => { mails.push(o); } },
-    ScriptApp: { getOAuthToken: () => 'oauth-test' }
+    MailApp: { sendEmail: (o) => { if (failTo.has(o.to)) throw new Error('Service invoked too many times: email'); mails.push(o); } },
+    ScriptApp: {
+      getOAuthToken: () => 'oauth-test',
+      getProjectTriggers: () => triggers.slice(),
+      deleteTrigger: (t) => { const i = triggers.indexOf(t); if (i >= 0) triggers.splice(i, 1); },
+      newTrigger: (fn) => {
+        const t = { fn, spec: {}, getHandlerFunction: () => fn };
+        const b = { timeBased: () => b, everyMinutes: (n) => { t.spec.minutes = n; return b; }, everyDays: (n) => { t.spec.days = n; return b; },
+          atHour: (h) => { t.spec.hour = h; return b; }, inTimezone: (z) => { t.spec.tz = z; return b; }, nearMinute: () => b, create: () => { triggers.push(t); return t; } };
+        return b;
+      }
+    }
   };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(opts.script, 'utf8'), ctx, { filename: 'Bedewy_API.gs' });
-  return { ctx, props, cache, mails, files, call: (body) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(body) } }).getContent()) };
+  return { ctx, props, cache, mails, files, triggers, failTo, exports, flags, fetched, call: (body) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(body) } }).getContent()) };
 }
 
 module.exports = { Sheet, Spreadsheet, makeEnv, localMidnight, TZ, tzParts };
