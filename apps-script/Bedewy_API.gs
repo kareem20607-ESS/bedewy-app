@@ -16,14 +16,15 @@
  */
 
 var BDW = {
-  VERSION: '2026-11-26.3',
+  VERSION: '2026-11-26.4',
   CLIENT_ID: '760770227194-t2r0kna5g34igsarqfmf8psm8418ejlr.apps.googleusercontent.com',
   APP_URL: 'https://kareem20607-ess.github.io/bedewy-app/',      // بيتحط في الإيميلات لو «رابط التطبيق» مش متكتب في الإعدادات
   FIRST: 4,                                   // أول صف بيانات في كل الأوراق (1 عنوان، 2 شرح، 3 رؤوس)
   S: {
     permits: 'إذونات التوريد', qty: 'الكميات المنفذة', vouchers: 'السندات', stmts: 'المستخلصات',
     projects: 'المشروعات', parties: 'الأطراف', items: 'الأصناف', boq: 'المقايسة', subs: 'عقود الباطن', journal: 'اليومية', accounts: 'دليل الحسابات',
-    users: 'المستخدمين', settings: 'إعدادات التطبيق', custody: 'العهد', exp: 'مصروفات العهدة', log: 'سجل التطبيق', print: 'طباعة المستخلص'
+    users: 'المستخدمين', settings: 'إعدادات التطبيق', custody: 'العهد', exp: 'مصروفات العهدة', log: 'سجل التطبيق', print: 'طباعة المستخلص',
+    store: 'حركة المخزن'
   },
   /* أرقام الأعمدة اللي السكريبت بيقراها أو بيكتبها. الأعمدة اللي فيها معادلات (الأسماء، الإجماليات، قيمة المستخلص
      وصافيه، سعر الجهاز وفئة الباطن في المحاضر) بتتقري بس، وعمرها ما بتتكتب، عشان المعادلة ما تتكسرش. */
@@ -35,11 +36,14 @@ var BDW = {
     exp: { no: 1, date: 2, project: 3, custody: 4, cat: 5, desc: 6, amount: 7, status: 8, photo: 9, by: 10, notes: 11, n: 11 },
     custody: { no: 1, project: 2, holder: 3, amount: 4, date: 5, from: 6, status: 7, notes: 8, n: 8 },
     users: { email: 1, name: 2, role: 3, projects: 4, active: 5, notes: 6, approve: 7, daily: 8, n: 8 },
-    log: { time: 1, key: 2, id: 3, type: 4, event: 5, email: 6, name: 7, role: 8, details: 9, n: 9 }
+    log: { time: 1, key: 2, id: 3, type: 4, event: 5, email: 6, name: 7, role: 8, details: 9, n: 9 },
+    /* حركة المخزن (6.4): صرف للتنفيذ وجرد في ورقة واحدة. الكمية في الصرف موجبة، وفي الجرد هي الفرق (العدد الفعلي ناقص الرصيد الدفتري) */
+    store: { no: 1, date: 2, project: 3, kind: 4, item: 5, name: 6, unit: 7, qty: 8, counted: 9, to: 10, boq: 11, status: 12, photo: 13, by: 14, notes: 15, n: 15 }
   },
-  SHEET_OF: { permit: 'permits', qty: 'qty', voucher: 'vouchers', stmt: 'stmts', exp: 'exp' },
-  TYPE_NAME: { permit: 'إذن توريد', qty: 'محضر كميات', exp: 'مصروف عهدة', voucher: 'سند صرف', stmt: 'مستخلص' },
-  PREFIX: { permit: 'SP-', qty: 'Q-', exp: 'EX-', voucher: 'PV-' },   // سند القبض بيبدأ RV-
+  SHEET_OF: { permit: 'permits', qty: 'qty', voucher: 'vouchers', stmt: 'stmts', exp: 'exp', issue: 'store', count: 'store' },
+  TYPE_NAME: { permit: 'إذن توريد', qty: 'محضر كميات', exp: 'مصروف عهدة', voucher: 'سند صرف', stmt: 'مستخلص', issue: 'إذن صرف مخزن', count: 'جرد مخزن' },
+  PREFIX: { permit: 'SP-', qty: 'Q-', exp: 'EX-', voucher: 'PV-', issue: 'IS-', count: 'IC-' },   // سند القبض بيبدأ RV-
+  STORE_KIND: { issue: 'صرف للتنفيذ', count: 'جرد' },               // عمود «النوع» في «حركة المخزن»
   SUB: 'مقاول باطن', CLIENT: 'عميل',                                // نوع المستخلص في الشيت
   METHODS: ['نقدي', 'تحويل', 'شيك'], FROMS: ['الخزينة', 'البنك'],
   ROLE: { 'محاسب الموقع': 'site', 'مهندس الموقع': 'eng', 'محاسب المشروع': 'acc', 'المالك': 'owner', 'مدير المنظومة': 'admin' },
@@ -49,7 +53,7 @@ var BDW = {
   SET: {                                       // أسماء البنود في ورقة «إعدادات التطبيق»
     limit: 'حد اعتماد محاسب المشروع للسندات', pricePct: 'نسبة تنبيه اختلاف السعر', late: 'أيام تأخير الاعتماد',
     radius: 'نطاق موقع المشروع (كم)', renewMail: 'إشعار طلب تجديد العهدة بالبريد', folder: 'فولدر صور التطبيق', site: 'موقع المشروع ',
-    appUrl: 'رابط التطبيق'
+    appUrl: 'رابط التطبيق', storeStart: 'بداية المخزن ', storeOut: 'أصناف خارج المخزن', storeLow: 'تنبيه قرب نفاد المادة'
   }
 };
 
@@ -256,12 +260,78 @@ function bdwSettings_() {
     var p = String(m[k] || '').replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); }).split(/[،,\s]+/).filter(String).map(Number);
     if (p.length === 2 && !isNaN(p[0]) && !isNaN(p[1])) sites[k.slice(BDW.SET.site.length).trim()] = { lat: p[0], lng: p[1] };
   });
+  var starts = {};
+  Object.keys(m).forEach(function (k) {
+    if (k.indexOf(BDW.SET.storeStart) !== 0) return;
+    var iso = bdwIso_(m[k]);
+    if (iso) starts[k.slice(BDW.SET.storeStart.length).trim()] = iso;
+  });
+  var low = n(BDW.SET.storeLow, 0.1);
   return {
     voucherLimit: n(BDW.SET.limit, 50000), priceWarnPct: pct > 1 ? pct / 100 : pct, lateDays: n(BDW.SET.late, 3),
     siteRadiusKm: n(BDW.SET.radius, 2), renewMail: !/^لا/.test(String(m[BDW.SET.renewMail] || '')),
     folder: bdwDriveId_(m[BDW.SET.folder]) || String(m[BDW.SET.folder] || '').trim(), sites: sites, postExp: false,
-    appUrl: String(m[BDW.SET.appUrl] || '').trim() || BDW.APP_URL
+    appUrl: String(m[BDW.SET.appUrl] || '').trim() || BDW.APP_URL,
+    storeStarts: starts, storeLow: low > 1 ? low / 100 : low,
+    storeOut: String(m[BDW.SET.storeOut] || '').split(/[،,؛;\n]+/).map(function (x) { return x.trim(); }).filter(String)
   };
+}
+
+/* ======================= مخزن الموقع (6.4) ======================= */
+
+/* أصناف المخزن: كل الأصناف ما عدا اللي في «أصناف خارج المخزن» (كود صنف أو اسم فئة، زي الخرسانة اللي بتتصرف أول ما توصل).
+   rows اختيارية: [الكود، الاسم، الوحدة، الفئة] لو اتقرت قبل كده */
+function bdwStoreItems_(st, rows) {
+  var tok = {}, out = {};
+  (st.storeOut || []).forEach(function (t) { tok[t] = 1; });
+  (rows || bdwRows_(bdwSheet_(BDW.S.items), 4).map(function (r) { return [String(r.v[0]).trim(), String(r.v[1]).trim(), String(r.v[2]).trim(), String(r.v[3] || '').trim()]; }))
+    .forEach(function (i) { out[i[0]] = { code: i[0], name: i[1], unit: i[2], cat: i[3], out: !!(tok[i[0]] || (i[3] && tok[i[3]])) }; });
+  return out;
+}
+/* حركات مخزن المشروع من «بداية المخزن»: الوارد من إذونات التوريد، والمنصرف والجرد من «حركة المخزن»، من غير الملغى.
+   الحركة: [النوع in/out/adj، الرقم، التاريخ، الصنف، الكمية، حالة الشيت، المورد أو المستلم، بند المقايسة أو العدد الفعلي].
+   في الجرد الكمية هي الفرق (موجب زيادة، سالب عجز). null = المخزن مش متفعّل للمشروع. */
+function bdwStoreMoves_(project, st, items) {
+  var start = st.storeStarts[project];
+  if (!start) return null;
+  var moves = [], P = BDW.C.permits, M = BDW.C.store;
+  bdwRows_(bdwSheet_(BDW.S.permits), P.n).forEach(function (r) {
+    var v = r.v, it = String(v[P.item - 1]).trim(), iso = bdwIso_(v[P.date - 1]), s0 = String(v[P.status - 1]).trim();
+    if (String(v[P.project - 1]).trim() !== project || s0 === 'ملغى' || iso < start || !items[it] || items[it].out) return;
+    moves.push(['in', String(v[0]).trim(), iso, it, bdwNum_(v[P.qty - 1]) || 0, s0, String(v[P.party - 1]).trim(), '']);
+  });
+  var sh = bdwSS_().getSheetByName(BDW.S.store);
+  if (sh) bdwRows_(sh, M.n).forEach(function (r) {
+    var v = r.v, s0 = String(v[M.status - 1]).trim(), count = String(v[M.kind - 1]).trim() === BDW.STORE_KIND.count;
+    if (String(v[M.project - 1]).trim() !== project || s0 === 'ملغى') return;
+    moves.push([count ? 'adj' : 'out', String(v[0]).trim(), bdwIso_(v[M.date - 1]), String(v[M.item - 1]).trim(), bdwNum_(v[M.qty - 1]) || 0, s0,
+      count ? '' : (String(v[M.to - 1] || '').trim() || 'ذاتي'), count ? bdwNum_(v[M.counted - 1]) : String(v[M.boq - 1] || '').trim()]);
+  });
+  return moves;
+}
+function bdwStoreBal_(moves, item) {
+  var b = 0;
+  (moves || []).forEach(function (m) { if (m[3] === item) b += m[0] === 'out' ? -m[4] : m[4]; });
+  return Math.round(b * 1000) / 1000;
+}
+/* فيه جرد تاني للصنف ده مستني الاعتماد؟ (الجرد الجديد بيتحسب على الرصيد بعد الجرد اللي قبله) */
+function bdwStorePendingCount_(sh, project, item, exceptId) {
+  var C = BDW.C.store;
+  return bdwRows_(sh, C.n).some(function (r) {
+    var v = r.v;
+    return String(v[0]).trim() !== (exceptId || '') && String(v[C.project - 1]).trim() === project && String(v[C.item - 1]).trim() === item &&
+      String(v[C.kind - 1]).trim() === BDW.STORE_KIND.count && String(v[C.status - 1]).trim() === 'مسجَّل';
+  });
+}
+/* الصرف والجرد بيتحسبوا على رصيد اللحظة دي، جوه القفل */
+function bdwStoreCheck_(type, o, sh, exceptId) {
+  var st = bdwSettings_(), bal = bdwStoreBal_(bdwStoreMoves_(o.project, st, bdwStoreItems_(st)), o.item);
+  if (type === 'issue' && o.qty > bal + 1e-9) throw bdwErr_('invalid', 'الكمية أكبر من رصيد المخزن (' + bdwQtyTxt_(bal, o.unit) + ').');
+  if (type === 'count') {
+    if (bdwStorePendingCount_(sh, o.project, o.item, exceptId)) throw bdwErr_('conflict', 'فيه جرد للصنف ده مستني الاعتماد. اعتمده أو ارفضه الأول.');
+    o.book = bal; o.adj = Math.round((o.counted - bal) * 1000) / 1000;
+  }
+  return bal;
 }
 
 /* ======================= سجل التطبيق ======================= */
@@ -323,7 +393,7 @@ function bdwBootstrap_(me, wanted) {
 
   var parties = bdwRows_(bdwSheet_(BDW.S.parties), 6).map(function (r) { return [String(r.v[0]).trim(), String(r.v[1]).trim(), bdwPartyType_(r.v[2]), bdwNum_(r.v[4]) || 0, String(r.v[3] || '').trim()]; });
   var ptype = {}, pname = {}; parties.forEach(function (p) { ptype[p[0]] = p[2]; pname[p[0]] = p[1]; });
-  var items = bdwRows_(bdwSheet_(BDW.S.items), 3).map(function (r) { return [String(r.v[0]).trim(), String(r.v[1]).trim(), String(r.v[2]).trim()]; });
+  var items = bdwRows_(bdwSheet_(BDW.S.items), 4).map(function (r) { return [String(r.v[0]).trim(), String(r.v[1]).trim(), String(r.v[2]).trim(), String(r.v[3] || '').trim()]; });
   var accounts = [], accName = {}, shA = ss.getSheetByName(BDW.S.accounts);
   if (shA) bdwRows_(shA, 4).forEach(function (r) { var c = String(r.v[0]).trim(); accName[c] = String(r.v[1]).trim(); accounts.push([c, accName[c], Number(r.v[3]) || 0]); });
 
@@ -474,6 +544,22 @@ function bdwBootstrap_(me, wanted) {
     docs.push(d);
   });
 
+  /* مخزن الموقع (6.4): الحركات من بداية المخزن، وأذونات الصرف والجرد كمستندات */
+  var store = { on: false }, sItems = bdwStoreItems_(st, items), sMoves = bdwStoreMoves_(pc, st, sItems);
+  if (sMoves) store = { on: true, start: st.storeStarts[pc], low: st.storeLow, out: Object.keys(sItems).filter(function (c) { return sItems[c].out; }),
+    moves: sMoves.map(function (m) { m[5] = bdwStatus_(m[0] === 'in' ? 'permit' : 'issue', m[5], false); return m; }) };
+  var shS = ss.getSheetByName(BDW.S.store);
+  if (shS) bdwRows_(shS, P.store.n).forEach(function (r) {
+    var v = r.v, C = P.store, id = String(v[0]).trim();
+    if (String(v[C.project - 1]).trim() !== pc) return;
+    var type = String(v[C.kind - 1]).trim() === BDW.STORE_KIND.count ? 'count' : 'issue', inf = info(type, id), rs = inf.resub && inf.resub.d;
+    var extra = { item: String(v[C.item - 1]).trim(), qty: bdwNum_(v[C.qty - 1]) || 0, photo: bdwPhotoRef_(v[C.photo - 1]), notes: bdwStripMark_(v[C.notes - 1]) };
+    if (type === 'count') extra.counted = bdwNum_(v[C.counted - 1]);
+    else { extra.exec = String(v[C.to - 1] || '').trim() || 'ذاتي'; extra.boq = String(v[C.boq - 1] || '').trim(); extra.sign = (rs && rs.sign) || (inf.submit && inf.submit.d.sign) || ''; }
+    var d = base(type, id, bdwIso_(v[C.date - 1]), String(v[C.status - 1]).trim(), pc, extra, v[C.by - 1]);
+    if (d && keep(d)) docs.push(d);
+  });
+
   /* العهدة ومصروفاتها */
   var custody = null, shC = ss.getSheetByName(BDW.S.custody);
   if (shC) bdwRows_(shC, P.custody.n).forEach(function (r) {
@@ -519,12 +605,12 @@ function bdwBootstrap_(me, wanted) {
   return {
     ok: true, version: BDW.VERSION, serverTime: Date.now(),
     user: { email: me.email, name: me.name, role: me.role, prefs: me.prefs || null },
-    settings: { voucherLimit: st.voucherLimit, priceWarnPct: st.priceWarnPct, lateDays: st.lateDays, siteRadiusKm: st.siteRadiusKm, postExp: st.postExp },
+    settings: { voucherLimit: st.voucherLimit, priceWarnPct: st.priceWarnPct, lateDays: st.lateDays, siteRadiusKm: st.siteRadiusKm, postExp: st.postExp, storeLow: st.storeLow },
     projects: projects, parties: parties.map(function (p) { return [p[0], p[1], p[2], p[4]]; }), balances: balances, items: items, accounts: accounts,
     supplies: supplies, lastPrice: lastPrice, boq: boq, subItems: subItems, rates: rates, contracts: contracts,
     custody: custody, kpis: { contract: contract, contractNet: contractNet, executed: k.executed, clientStmts: k.clientStmts, clientStmtsNet: k.clientStmtsNet,
       cost: dash.cost, received: k.received, subWorks: k.subWorks, subPaid: k.subPaid },
-    dash: dash, pstats: pst, qtyAll: qtyAll, vouchers: vouchers,
+    dash: dash, pstats: pst, qtyAll: qtyAll, vouchers: vouchers, store: store,
     docs: docs
   };
 }
@@ -572,7 +658,8 @@ function bdwSubmit_(me, op, isResub) {
   if (!op || typeof op !== 'object' || !/^[\w-]{6,64}$/.test(String(op.key || ''))) throw bdwErr_('invalid', 'المستند ناقص بياناته.');
   var d = op.doc || {}, type = d.type;
   if (!BDW.PREFIX[type]) throw bdwErr_('invalid', 'نوع مستند غير معروف.');
-  var can = { permit: ['site', 'acc', 'admin'], qty: ['site', 'eng', 'admin'], exp: ['site'], voucher: ['acc', 'admin'] }[type];
+  var can = { permit: ['site', 'acc', 'admin'], qty: ['site', 'eng', 'admin'], exp: ['site'], voucher: ['acc', 'admin'], issue: ['site', 'eng', 'admin'], count: ['site', 'eng', 'admin'] }[type];
+  var store = type === 'issue' || type === 'count';                /* صورة إذن الصرف والجرد اختيارية */
   if (isResub && type === 'voucher') throw bdwErr_('invalid', 'السند ما بيتعدّلش؛ اعمل سند جديد.');
   if (can.indexOf(me.role) < 0) throw bdwErr_('forbidden', 'دورك ما بيسمحش بتسجيل المستند ده.');
   if (!bdwCanSee_(me, String(d.project || ''))) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
@@ -593,7 +680,7 @@ function bdwSubmit_(me, op, isResub) {
     });
   };
   if (d.photoData && type !== 'voucher') photoUrl = bdwSaveImage_(d.photoData, stamp + ' — صورة');
-  else if (!isResub && type !== 'voucher') throw bdwErr_('invalid', 'الصورة ما وصلتش مع المستند. افتحه وصوّره تاني.');
+  else if (!isResub && type !== 'voucher' && !store) throw bdwErr_('invalid', 'الصورة ما وصلتش مع المستند. افتحه وصوّره تاني.');
   if (d.signData) signId = bdwDriveId_(bdwSaveImage_(d.signData, stamp + ' — توقيع'));
 
   var lock = LockService.getScriptLock();
@@ -603,18 +690,22 @@ function bdwSubmit_(me, op, isResub) {
     if (again) return bdwSeen_(again);
     var det = { at: Number(op.at) || Date.now(), loc: clean.loc };
     if (op.queuedAt) det.queuedAt = Number(op.queuedAt);
-    if (type === 'permit') { det.paperNo = clean.paperNo; if (signId) det.sign = 'drive:' + signId; }
+    if (type === 'permit') det.paperNo = clean.paperNo;
+    if ((type === 'permit' || type === 'issue') && signId) det.sign = 'drive:' + signId;
     if (type === 'qty') { det.kind = clean.kind; if (clean.cumulative != null) det.cumulative = clean.cumulative; }
     if (isResub) {
       bdwRewrite_(me, type, target, clean, photoUrl);
       det.target = target.key;
+      if (type === 'count') { det.counted = clean.counted; det.adj = clean.adj; }
       bdwLog_(op.key, target.id, type, 'resubmit', me, det);
-      return { ok: true, id: target.id };
+      return type === 'count' ? { ok: true, id: target.id, adj: clean.adj } : { ok: true, id: target.id };
     }
     if (type === 'voucher') { det.kind = clean.kind; det.amount = clean.amount; }
     var id = bdwAppend_(me, type, clean, photoUrl);
+    if (type === 'count') { det.counted = clean.counted; det.adj = clean.adj; }
     bdwLog_(op.key, id, type, 'submit', me, det);
     rename(id);
+    if (type === 'count') return { ok: true, id: id, adj: clean.adj };
     if (type === 'voucher') {                                   /* سند القبض، وسند الصرف لحد حد المحاسب، بيتعتمدوا مع التسجيل */
       if (clean.autoOk) bdwLog_(op.key, id, type, 'approve', me, { auto: true });
       return { ok: true, id: id, status: clean.autoOk ? 'معتمد' : 'مسجَّل' };
@@ -668,6 +759,29 @@ function bdwValidate_(me, type, d) {
     if (o.kind === 'تراكمي') { o.cumulative = Number(d.cumulative); if (!(o.cumulative > 0)) bad('اكتب الكمية التراكمية.'); }
     o.exec = String(d.exec || 'ذاتي');
     if (o.exec !== 'ذاتي' && codes(BDW.S.parties, true)[o.exec] !== 'مقاول باطن') bad('مقاول الباطن مش موجود في الأطراف.');
+  } else if (type === 'issue' || type === 'count') {
+    var stS = bdwSettings_(), start = stS.storeStarts[o.project];
+    if (!start) bad('المخزن مش متفعّل للمشروع ده. اكتب «' + BDW.SET.storeStart + o.project + '» في «' + BDW.S.settings + '».');
+    if (date < start) bad('التاريخ قبل بداية المخزن (' + start + ').');
+    var si = bdwStoreItems_(stS)[String(d.item || '').trim()];
+    if (!si) bad('الصنف مش موجود في الأصناف.');
+    if (si.out) bad('الصنف ده بيتصرف أول ما يوصل، ومش من أصناف المخزن.');
+    o.item = si.code; o.itemName = si.name; o.unit = si.unit;
+    if (type === 'issue') {
+      o.qty = Math.round(Number(d.qty) * 1000) / 1000;
+      if (!(o.qty > 0)) bad('الكمية لازم تكون أكبر من صفر.');
+      o.exec = String(d.exec || 'ذاتي');
+      if (o.exec !== 'ذاتي' && codes(BDW.S.parties, true)[o.exec] !== 'مقاول باطن') bad('مقاول الباطن مش موجود في الأطراف.');
+      o.boq = String(d.boq || '').trim();
+      if (o.boq) {
+        var okB = bdwRows_(bdwSheet_(BDW.S.boq), 3).some(function (r) { return String(r.v[0]).trim() === o.project && String(r.v[2]).trim() === o.boq; }) ||
+          bdwRows_(bdwSheet_(BDW.S.subs), 6).some(function (r) { return String(r.v[1]).trim() === o.project && String(r.v[5]).trim() === o.boq; });
+        if (!okB) bad('بند المقايسة مش موجود في المشروع.');
+      }
+    } else {
+      o.counted = d.counted === '' || d.counted === null || d.counted === undefined ? NaN : Math.round(Number(d.counted) * 1000) / 1000;
+      if (!(o.counted >= 0)) bad('اكتب العدد الفعلي (صفر أو أكتر).');
+    }
   } else if (type === 'exp') {
     o.cat = String(d.cat || ''); o.desc = String(d.desc || '').trim().slice(0, 200); o.amount = Number(d.amount);
     if (BDW.CATS.indexOf(o.cat) < 0) bad('اختار تصنيف المصروف.');
@@ -725,6 +839,15 @@ function bdwAppend_(me, type, o, photoUrl) {
       [C.by, me.name], [C.notes, o.notes]]);
     return id;
   }
+  if (type === 'issue' || type === 'count') {
+    sh = bdwSheet_(BDW.S.store); C = BDW.C.store;
+    bdwStoreCheck_(type, o, sh, '');
+    r = bdwNextRow_(sh); id = bdwNextId_(sh, BDW.PREFIX[type], 4);
+    bdwSet_(sh, r, [[C.no, id], [C.date, bdwToDate_(o.date)], [C.project, o.project], [C.kind, BDW.STORE_KIND[type]], [C.item, o.item], [C.name, o.itemName],
+      [C.unit, o.unit], [C.qty, type === 'issue' ? o.qty : o.adj], [C.counted, type === 'count' ? o.counted : ''], [C.to, type === 'issue' ? o.exec : ''],
+      [C.boq, type === 'issue' ? o.boq : ''], [C.status, 'مسجَّل'], [C.photo, photoUrl], [C.by, me.name], [C.notes, o.notes]]);
+    return id;
+  }
   var cu = bdwOpenCustody_(me, o.project);
   if (!cu) throw bdwErr_('invalid', 'مفيش عهدة مفتوحة باسمك في المشروع ده. كلّم محاسب المشروع.');
   if (o.amount > cu.left + 0.001) throw bdwErr_('invalid', 'المبلغ أكبر من المتبقي في العهدة (' + cu.left + ' ج).');
@@ -778,6 +901,11 @@ function bdwRewrite_(me, type, t, o, photoUrl) {
     var cu = bdwOpenCustody_(me, o.project);           /* المرفوض «ملغى» فمش محسوب في المصروف */
     if (cu && String(t.v[C.custody - 1]).trim() === cu.no && o.amount > cu.left + 0.001) throw bdwErr_('invalid', 'المبلغ أكبر من المتبقي في العهدة (' + cu.left + ' ج).');
     pairs.push([C.cat, o.cat], [C.desc, o.desc], [C.amount, o.amount], [C.notes, o.notes]);
+  }
+  if (type === 'issue' || type === 'count') {                 /* المرفوض «ملغى» فمش داخل في الرصيد */
+    bdwStoreCheck_(type, o, t.sheet, t.id);
+    pairs.push([C.item, o.item], [C.name, o.itemName], [C.unit, o.unit], [C.qty, type === 'issue' ? o.qty : o.adj], [C.notes, o.notes]);
+    if (type === 'issue') pairs.push([C.to, o.exec], [C.boq, o.boq]); else pairs.push([C.counted, o.counted]);
   }
   bdwSet_(t.sheet, t.row, pairs);
 }
@@ -836,10 +964,11 @@ function bdwAllowed_(role, type, status, kind, amount, inf, st) {
   }
   if (kind === 'tech' || status !== 'مسجَّل') return false;
   var byEng = !!(inf.submit && inf.submit.role === 'eng'), lim = st.voucherLimit;
-  if (role === 'eng') return type === 'qty';
-  if (role === 'acc') return type === 'permit' || type === 'exp' || (type === 'voucher' && amount <= lim);
-  if (role === 'admin') return type === 'permit' || type === 'exp' || (type === 'voucher' && amount <= lim) || (type === 'qty' && byEng);
-  if (role === 'owner') return (type === 'voucher' && amount > lim) || (type === 'qty' && byEng);
+  var site = type === 'qty' || type === 'issue';                 /* المحضر وإذن الصرف للمهندس، واللي سجّله المهندس بنفسه للمالك */
+  if (role === 'eng') return site;
+  if (role === 'acc') return type === 'permit' || type === 'exp' || type === 'count' || (type === 'voucher' && amount <= lim);
+  if (role === 'admin') return type === 'permit' || type === 'exp' || type === 'count' || (type === 'voucher' && amount <= lim) || (site && byEng);
+  if (role === 'owner') return (type === 'voucher' && amount > lim) || (site && byEng);
   return false;
 }
 
@@ -1291,11 +1420,12 @@ function bdwDay_(bs, u, st, today) {
   var pm = ds.filter(function (d) { return d.type === 'permit' && live(d) && isToday(d); });
   var qt = ds.filter(function (d) { return d.type === 'qty' && live(d) && isToday(d); });
   var ex = ds.filter(function (d) { return d.type === 'exp' && live(d) && isToday(d); });
+  var is = ds.filter(function (d) { return d.type === 'issue' && live(d) && isToday(d); });
   var vo = (bs.vouchers || []).filter(function (v) { return v[2] === today && v[10] !== 'ملغى' && v[10] !== 'مرفوض'; });
   var pay = vo.filter(function (v) { return v[1] === 'صرف'; }), rec = vo.filter(function (v) { return v[1] === 'قبض'; });
   var pend = ds.filter(bdwPending_);
   var mine = pend.filter(function (d) { return d.by !== u.email && bdwAwaits_(d, u.role, st); });
-  if (!pm.length && !qt.length && !ex.length && !vo.length && !pend.length) return null;
+  if (!pm.length && !qt.length && !ex.length && !is.length && !vo.length && !pend.length) return null;
   var overs = [], seen = {};
   qt.forEach(function (d) {
     if (seen[d.boq]) return; seen[d.boq] = 1;
@@ -1311,6 +1441,7 @@ function bdwDay_(bs, u, st, today) {
   ];
   if (rec.length) rows.push(['المقبوض', bdwCount_(rec.length, 'voucher') + ' — ' + money(sum(rec, function (v) { return v[5]; }))]);
   if (ex.length) rows.push(['مصروفات العهدة', bdwCount_(ex.length, 'exp') + ' — ' + money(sum(ex, function (d) { return d.amount; }))]);
+  if (is.length) rows.push(['صرف المخزن', bdwCount_(is.length, 'issue')]);
   rows.push(['بانتظار الاعتماد', pend.length ? bdwCount_(pend.length, 'doc') + ' — ' + 'أقدمها بقاله ' + (days > 0 ? bdwCount_(days, 'day') : 'أقل من يوم') : none]);
   if (u.role !== 'site') rows.push(['بانتظار قرارك', mine.length ? mine.slice(0, 8).map(function (d) { var a = bdwDocAmount_(d); return d.id + (a ? ' — ' + money(a) : ''); }).join('، ') +
     (mine.length > 8 ? '، و' + (mine.length - 8) + ' كمان' : '') : none]);
@@ -1352,6 +1483,7 @@ function bdwMoney_(n) {
 }
 function bdwQtyTxt_(q, unit) { var n = Math.round((Number(q) || 0) * 100) / 100; return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (unit ? ' ' + unit : ''); }
 var BDW_NOUN = { permit: ['إذن', 'إذنين', 'إذونات'], qty: ['محضر', 'محضرين', 'محاضر'], voucher: ['سند', 'سندين', 'سندات'], exp: ['مصروف', 'مصروفين', 'مصروفات'],
+  issue: ['إذن صرف', 'إذنين صرف', 'أذونات صرف'], count: ['جرد', 'جردين', 'عمليات جرد'],
   doc: ['مستند', 'مستندين', 'مستندات'], day: ['يوم', 'يومين', 'أيام'] };
 function bdwCount_(n, k) { var w = BDW_NOUN[k]; return n === 1 ? w[0] + ' واحد' : n === 2 ? w[1] : n + ' ' + (n <= 10 ? w[2] : w[0]); }
 var BDW_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
@@ -1380,6 +1512,9 @@ function bdwDocLine_(d, bs) {
   if (d.type === 'exp') return [d.cat, d.desc, money(d.amount)].filter(String).join(' — ');
   if (d.type === 'voucher') return [nm.party[d.party] || d.party || '', money(d.amount), d.notes].filter(String).join(' — ');
   if (d.type === 'stmt') return [(d.kind === BDW.CLIENT ? 'عميل: ' : 'مقاول باطن: ') + (nm.party[d.party] || d.party), 'الصافي ' + money(d.net)].join(' — ');
+  if (d.type === 'issue') return [nm.item[d.item] || d.item, bdwQtyTxt_(d.qty, nm.unit[d.item]), d.exec && d.exec !== 'ذاتي' ? 'إلى ' + (nm.party[d.exec] || d.exec) : 'تنفيذ ذاتي'].join(' — ');
+  if (d.type === 'count') return [nm.item[d.item] || d.item, 'العدد الفعلي ' + bdwQtyTxt_(d.counted, nm.unit[d.item]),
+    d.qty ? (d.qty > 0 ? 'زيادة ' : 'عجز ') + bdwQtyTxt_(Math.abs(d.qty), nm.unit[d.item]) : 'مطابق للدفتري'].join(' — ');
   return '';
 }
 
@@ -1625,4 +1760,46 @@ function setupApi() {
   var msg = made.length ? 'اتعملت الأوراق: ' + made.join('، ') + '.' : 'كل الأوراق موجودة.';
   msg += '\n\nالخطوة الجاية: املأ «' + BDW.S.users + '»، واكتب موقع المشروع في «' + BDW.S.settings + '»، وبعدين انشر السكريبت كتطبيق ويب.';
   try { SpreadsheetApp.getUi().alert('إعداد ربط التطبيق ✅', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) { console.log(msg); }
+}
+
+/* ======================= مخزن الموقع: الإعداد (يتشغّل مرة من المحرر) ======================= */
+
+/* بتعمل ورقة «حركة المخزن» لو مش موجودة، وبتزوّد في «إعدادات التطبيق» سطر «بداية المخزن» لكل مشروع و«أصناف خارج المخزن»
+   و«تنبيه قرب نفاد المادة» لو مش موجودين. ما بتغيّرش أي حاجة موجودة، فتشغيلها تاني آمن.
+   المخزن بيشتغل للمشروع من التاريخ اللي يتكتب قدام «بداية المخزن»: الإذونات قبله مش داخلة، وأول حركة لكل صنف جرد افتتاحي بالرصيد الفعلي. */
+function setupStore() {
+  var ss = bdwSS_(), made = '', C = BDW.C.store, sh = ss.getSheetByName(BDW.S.store);
+  if (!sh) {
+    sh = ss.insertSheet(BDW.S.store, ss.getNumSheets());
+    sh.setRightToLeft(true);
+    sh.getRange(1, 1).setValue('مؤسسة محمد بديوي للإنشاءات ورصف الطرق   |   📦 حركة المخزن').setFontWeight('bold').setFontSize(13).setFontColor('#14213D');
+    sh.getRange(2, 1).setValue('بتتسجّل من التطبيق: صرف مواد للتنفيذ وجرد. الوارد من «' + BDW.S.permits + '». الرصيد = الوارد − المنصرف ± فروق الجرد. في الجرد «الكمية» هي الفرق.')
+      .setFontColor('#5B6472').setFontSize(10);
+    var heads = ['رقم الحركة', 'التاريخ', 'كود المشروع', 'النوع', 'كود الصنف', 'اسم الصنف', 'الوحدة', 'الكمية', 'العدد الفعلي', 'المستلم', 'بند المقايسة', 'الحالة', 'رابط الصورة', 'المُدخِل', 'ملاحظات'];
+    sh.getRange(3, 1, 1, heads.length).setValues([heads]).setFontWeight('bold').setFontColor('#FFFFFF').setBackground('#14213D').setHorizontalAlignment('center').setWrap(true);
+    sh.setFrozenRows(3);
+    [100, 100, 100, 100, 90, 240, 70, 90, 90, 110, 100, 90, 200, 130, 220].forEach(function (w, i) { sh.setColumnWidth(i + 1, w); });
+    var list = function (col, values) { sh.getRange(BDW.FIRST, col, 2000, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(values, true).setAllowInvalid(false).build()); };
+    list(C.kind, [BDW.STORE_KIND.issue, BDW.STORE_KIND.count]); list(C.status, ['مسجَّل', 'معتمد', 'ملغى']);
+    sh.getRange(BDW.FIRST, C.date, 2000, 1).setNumberFormat('yyyy-mm-dd');
+    sh.getRange(BDW.FIRST, C.qty, 2000, 2).setNumberFormat('#,##0.###');
+    made = 'اتعملت ورقة «' + BDW.S.store + '». ';
+  }
+  var set = bdwSheet_(BDW.S.settings), have = {}, rows = [];
+  bdwRows_(set, 1).forEach(function (r) { have[String(r.v[0]).trim()] = 1; });
+  bdwRows_(bdwSheet_(BDW.S.projects), 1).forEach(function (r) {
+    var k = BDW.SET.storeStart + String(r.v[0]).trim();
+    if (!have[k]) rows.push([k, '', 'تاريخ بداية المخزن للمشروع (yyyy-mm-dd). فاضي = المخزن مقفول. الإذونات قبله مش داخلة؛ أول حركة لكل صنف جرد افتتاحي.']);
+  });
+  if (!have[BDW.SET.storeOut]) rows.push([BDW.SET.storeOut, '', 'أكواد أصناف أو أسماء فئات بتتصرف أول ما توصل (زي الخرسانة الجاهزة)، مفصولة بفاصلة. مش بتظهر في المخزن.']);
+  if (!have[BDW.SET.storeLow]) rows.push([BDW.SET.storeLow, 0.1, 'الصنف يظهر «قرب يخلص» لما رصيده يقل عن النسبة دي من الوارد.']);
+  if (rows.length) {
+    var r0 = bdwNextRow_(set);
+    set.getRange(r0, 1, rows.length, 3).setValues(rows);
+    rows.forEach(function (x, i) { if (x[0] === BDW.SET.storeLow) set.getRange(r0 + i, 2).setNumberFormat('0%'); });
+  }
+  var msg = made + (rows.length ? 'اتضاف ' + (rows.length === 1 ? 'سطر واحد' : rows.length === 2 ? 'سطرين' : rows.length + ' سطور') + ' في «' + BDW.S.settings + '».' : 'إعدادات المخزن موجودة.') +
+    '\n\nالخطوة الجاية: اكتب تاريخ «' + BDW.SET.storeStart.trim() + '» للمشروع، و«' + BDW.SET.storeOut + '» لو فيه، وبعدين سجّل جرد افتتاحي لكل صنف من التطبيق.';
+  try { SpreadsheetApp.getUi().alert('إعداد مخزن الموقع ✅', msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e) { console.log(msg); }
+  return msg;
 }

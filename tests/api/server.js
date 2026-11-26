@@ -22,6 +22,12 @@ const users = ss.getSheetByName('المستخدمين');
 const set = ss.getSheetByName('إعدادات التطبيق');
 for (let r = 4; r <= set.getLastRow(); r++) if (set.get(r, 1) === 'موقع المشروع P-001') set.put(r, 2, '30.0719, 31.6437');
 ss.getSheetByName('العهد').getRange(4, 1, 1, 8).setValues([['CU-001', 'P-001', 'site@test.dev', 20000, new Date(Date.now() - 5 * 864e5), 'الخزينة', 'مفتوحة', '']]);
+/* مخزن الموقع: من أول سبتمبر، والخرسانة بتتصرف أول ما توصل */
+env.ctx.setupStore();
+for (let r = 4; r <= set.getLastRow(); r++) {
+  if (set.get(r, 1) === 'بداية المخزن P-001') set.put(r, 2, '2026-09-01');
+  if (set.get(r, 1) === 'أصناف خارج المخزن') set.put(r, 2, 'خرسانة');
+}
 
 http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -30,7 +36,7 @@ http.createServer((req, res) => {
   if (req.url === '/sheet') {      /* لقطة من الأوراق للاختبار */
     const pick = n => ss.getSheetByName(n).rows.slice(3).map(r => r.map(v => v instanceof Date ? v.toISOString() : v));
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, cors));
-    return res.end(JSON.stringify({ permits: pick('إذونات التوريد'), exp: pick('مصروفات العهدة'), log: pick('سجل التطبيق'), stmts: pick('المستخلصات'), qty: pick('الكميات المنفذة'), vouchers: pick('السندات'), users: pick('المستخدمين') }));
+    return res.end(JSON.stringify({ permits: pick('إذونات التوريد'), exp: pick('مصروفات العهدة'), log: pick('سجل التطبيق'), stmts: pick('المستخلصات'), qty: pick('الكميات المنفذة'), vouchers: pick('السندات'), users: pick('المستخدمين'), store: pick('حركة المخزن') }));
   }
   let body = '';
   req.on('data', c => { body += c; });
