@@ -15,6 +15,13 @@ function ok(name, cond, extra) { results.push([cond ? 'PASS' : 'FAIL', name, ext
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, locale: 'ar-EG',
     geolocation: { latitude: 30.0727, longitude: 31.6446 }, permissions: ['geolocation']
   });
+  // الاختبار ده لوضع العيّنة: بنفضّي رابط السكريبت قبل ما التطبيق يقرا الإعدادات، عشان ما يطلبش دخول.
+  // (بيشتغل حتى لو عامل الخدمة هو اللي جاب config.js من المحفوظ)
+  await ctx.addInitScript(() => {
+    let c;
+    Object.defineProperty(window, 'BDW_CONFIG', { configurable: true,
+      get() { return c; }, set(v) { c = Object.assign({}, v, { API_URL: '', WRITE_URL: '' }); } });
+  });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
