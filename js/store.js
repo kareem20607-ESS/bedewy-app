@@ -114,7 +114,11 @@
     if (V.cat && !cats[V.cat]) V.cat = '';
     var fab = canMove() ? '<button class="fab xt" data-act="go" data-to="new/issue">' + IC.boxout + '<span>صرف مواد</span></button>' : '';
     if (!all.length) {
-      return head + '<main class="view">' + R.strip() + '<div class="card empty" style="padding:34px 22px"><b>لسه مفيش حركة في المخزن</b>المخزن بدأ ' + esc(R.dateLong(new Date(start() + 'T12:00').getTime())) +
+      /* قبل يوم البداية مفيش تسجيل خالص (التاريخ ما يسبقش البداية وما يعدّيش النهارده)، فمفيش زرار جرد لحد اليوم ده */
+      var when = esc(startLong());
+      if (soon()) return head + '<main class="view">' + R.strip() + '<div class="card empty" style="padding:34px 22px"><b>المخزن هيبدأ ' + when + '</b>' +
+        'يومها سجّل جرد افتتاحي لكل صنف موجود في الموقع، والوارد بعد كده بييجي لوحده من إذونات التوريد.</div></main>' + R.nav('');
+      return head + '<main class="view">' + R.strip() + '<div class="card empty" style="padding:34px 22px"><b>لسه مفيش حركة في المخزن</b>المخزن بدأ ' + when +
         '. ابدأ بجرد افتتاحي لكل صنف موجود في الموقع، والوارد بعد كده بييجي لوحده من إذونات التوريد.' +
         (canMove() ? '<div style="margin-top:14px"><button class="btn" data-act="go" data-to="new/count">' + IC.clipcheck + 'سجّل جرد افتتاحي</button></div>' : '') + '</div></main>' + R.nav('');
     }
@@ -176,8 +180,10 @@
     var T = totals(), all = Object.keys(T).map(function (c) { return T[c]; });
     var nIn = all.filter(function (o) { return o.bal > 1e-9; }).length, nLow = all.filter(function (o) { return o.state === 'low' || o.state === 'empty' || o.state === 'neg'; }).length;
     return '<button class="storecta" data-act="go" data-to="store">' + R.lead('box', nLow ? 'gold' : 'navy') + '<span><b>مخزن الموقع</b>' +
-      (all.length ? nItems(nIn) + ' ليها رصيد' + (nLow ? '، و' + nItems(nLow) + ' قربت تخلص أو خلصت' : '') : 'لسه مفيش حركة؛ ابدأ بجرد افتتاحي') + '</span>' + IC.next + '</button>';
+      (all.length ? nItems(nIn) + ' ليها رصيد' + (nLow ? '، و' + nItems(nLow) + ' قربت تخلص أو خلصت' : '') : soon() ? 'هيبدأ ' + esc(startLong()) : 'لسه مفيش حركة؛ ابدأ بجرد افتتاحي') + '</span>' + IC.next + '</button>';
   }
+  function startLong() { return R.dateLong(new Date(start() + 'T12:00').getTime()); }
+  function soon() { return !!start() && start() > R.today(); }
 
   /* ---------- الربط بالنواة ---------- */
   R.views.store = viewStore;

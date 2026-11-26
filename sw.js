@@ -1,11 +1,11 @@
 /* عامل الخدمة: يفتح التطبيق من غير نت.
    - الملفات اللي ليها رقم نسخة (?v=) والخطوط والأيقونات: من المحفوظ أولًا.
    - الصفحة نفسها: من الشبكة أولًا عشان التحديث يوصل فورًا، ولو الشبكة اتأخرت أو وقعت نرجع للمحفوظ. */
-var CACHE = 'bdw-shell-v6';
-var SHELL = ['./', 'index.html', 'css/app.css?v=6', 'css/fonts.css?v=6',
+var CACHE = 'bdw-shell-v7';
+var SHELL = ['./', 'index.html', 'css/app.css?v=7', 'css/fonts.css?v=7',
   'fonts/cairo-arabic-400-normal.woff2', 'fonts/cairo-arabic-600-normal.woff2', 'fonts/cairo-arabic-700-normal.woff2', 'fonts/cairo-arabic-800-normal.woff2',
   'fonts/cairo-latin-400-normal.woff2', 'fonts/cairo-latin-600-normal.woff2', 'fonts/cairo-latin-700-normal.woff2', 'fonts/cairo-latin-800-normal.woff2',
-  'js/config.js?v=6', 'js/sample.js?v=6', 'js/icons.js?v=6', 'js/pages.js?v=6', 'js/site.js?v=6', 'js/approve.js?v=6', 'js/finance.js?v=6', 'js/archive.js?v=6', 'js/desk.js?v=6', 'js/store.js?v=6', 'js/app.js?v=6',
+  'js/config.js?v=7', 'js/sample.js?v=7', 'js/icons.js?v=7', 'js/pages.js?v=7', 'js/site.js?v=7', 'js/approve.js?v=7', 'js/finance.js?v=7', 'js/archive.js?v=7', 'js/desk.js?v=7', 'js/store.js?v=7', 'js/app.js?v=7',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-180.png'];
 var NET_WAIT = 3500;
 self.addEventListener('install', function (e) {

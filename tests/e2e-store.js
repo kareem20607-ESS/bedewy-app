@@ -182,6 +182,18 @@ function ok(name, cond, extra) { results.push([cond ? 'PASS' : 'FAIL', name, ext
   await page.evaluate(() => { window.BDW.S.data.store.on = true; });
   await click('[data-act="cancel"]');
 
+  /* ---------- قبل يوم البداية: مفيش تسجيل لسه ---------- */
+  await role('site');
+  const kept = await page.evaluate(() => { const st = window.BDW.S.data.store; window.__keep = { start: st.start, moves: st.moves }; st.start = '2099-01-01'; st.moves = []; return Object.keys(window.BDW.storeTotals()).length; });
+  ok('before the start: nothing in the store yet', kept === 0, kept);
+  await page.evaluate(() => window.BDW.render());
+  ok('before the start: the home card says when it starts', /هيبدأ 1 يناير 2099/.test(await text('.storecta')), await text('.storecta'));
+  await go('store', 'main .empty');
+  const pre = await text('main .empty');
+  ok('before the start: the store says when, with no count button', /المخزن هيبدأ 1 يناير 2099/.test(pre) && (await page.locator('main [data-to="new/count"]').count()) === 0, pre);
+  await shot('09-before-start');
+  await page.evaluate(() => { const st = window.BDW.S.data.store; st.start = window.__keep.start; st.moves = window.__keep.moves; });
+
   /* ---------- كل الشاشات ---------- */
   await go('all', 'main');
   ok('screen map: 6.4 opens the store', await page.locator('[data-to="store"]').count() >= 1);
