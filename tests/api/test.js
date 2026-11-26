@@ -44,14 +44,14 @@ ok('user role from sheet', b.user && b.user.role === 'site' && b.user.name === '
 ok('project site coords', b.projects[0].lat === 30.0719 && b.projects[0].lng === 31.6437, b.projects[0]);
 ok('project short name and discount', b.projects[0].short === 'مشروع تجريبي — مدينة تجريبية' && b.projects[0].discount === 0.25, b.projects[0]);
 ok('settings from sheet', b.settings.voucherLimit === 50000 && b.settings.priceWarnPct === 0.05 && b.settings.siteRadiusKm === 2, b.settings);
-ok('boq with done qty', JSON.stringify(b.boq.find(x => x[0] === 'I-R06')) === JSON.stringify(['I-R06', 'طبقة إحلال', 'م3', 9000, 270, 11200]), b.boq);
+ok('boq with done qty', JSON.stringify(b.boq.find(x => x[0] === 'I-R06')) === JSON.stringify(['I-R06', 'طبقة إحلال', 'م3', 9000, 270, 11240]), b.boq);
 ok('sub items not in boq', b.subItems.length === 1 && b.subItems[0][0] === 'I-B01', b.subItems);
-ok('rates', b.rates['S-005|I-R06'] === 55 && b.rates['S-001|I-B01'] === 65, b.rates);
+ok('rates', b.rates['S-005|I-R06'] === 55 && b.rates['S-001|I-B01'] === 70, b.rates);
 ok('last approved price', b.lastPrice['V-001|I-C02'] === 1950 && b.lastPrice['V-002|I-P04'] === undefined, b.lastPrice);
 ok('supplies', JSON.stringify(b.supplies) === JSON.stringify({ 'V-001': ['I-C02'] }), b.supplies);
 ok('custody for holder', b.custody && b.custody.no === 'CU-001' && b.custody.amount === 20000, b.custody);
 ok('balances from journal + opening', b.balances['S-001'] === 385000 - 480000 && b.balances['V-001'] === 19500 && b.balances['S-005'] === 5000, b.balances);
-ok('kpis', b.kpis.contract === 150000000 && b.kpis.contractNet === 112500000 && b.kpis.executed === 2268000 && b.kpis.clientStmts === 2000000 && b.kpis.cost === 404500 && b.kpis.received === 1000000, b.kpis);
+ok('kpis like the reports file', b.kpis.contract === 13500000 && b.kpis.contractNet === 10125000 && b.kpis.executed === 2276100 && b.kpis.clientStmts === 2268000 && b.kpis.clientStmtsNet === 2154600 && b.kpis.cost === 416500 && b.kpis.received === 1000000, b.kpis);
 const sp2 = b.docs.find(d => d.id === 'SP-0002');
 ok('pending form permit is listed', sp2 && sp2.status === 'مسجَّل' && sp2.price === null && sp2.paperNo === '55' && sp2.photo === 'drive:FORMPHOTO0000000000000001' && sp2.key === 'id:SP-0002', sp2);
 ok('old approved permit not listed', !b.docs.some(d => d.id === 'SP-0001'));
@@ -107,16 +107,16 @@ ok('resubmit of a doc that is not rejected', call({ action: 'resubmit', idToken:
 /* ---- محضر كميات ---- */
 const qtyOp = (key, extra) => ({ action: 'submit', key, at: Date.now() - 3000, doc: Object.assign({ type: 'qty', project: 'P-001', date: today(0), boq: 'I-R06', qty: 300, kind: 'حالية', exec: 'S-005', notes: 'الشارع 4', loc: null, photoData: IMG }, extra || {}) });
 r = call({ action: 'submit', idToken: 'T_ENG', op: qtyOp('k-qty-1') });
-ok('eng submits qty', r.ok && r.id === 'Q-0002', r);
+ok('eng submits qty', r.ok && r.id === 'Q-0006', r);
 const Q = ss.getSheetByName('الكميات المنفذة');
-ok('qty row written', Q.get(5, 5) === 'I-R06' && Q.get(5, 8) === 300 && Q.get(5, 11) === 'S-005' && Q.get(5, 17) === 'مسجَّل' && Q.get(5, 19) === 'حالية — الشارع 4 — بواسطة هاني المهندس', Q.rows[4]);
-ok('eng cannot approve own qty', call({ action: 'approve', idToken: 'T_ENG', type: 'qty', id: 'Q-0002' }).error === 'forbidden');
-ok('acc cannot approve qty', call({ action: 'approve', idToken: 'T_ACC', type: 'qty', id: 'Q-0002' }).error === 'forbidden');
-ok('owner approves qty made by eng', call({ action: 'approve', idToken: 'T_OWNER', type: 'qty', id: 'Q-0002' }).ok && Q.get(5, 17) === 'معتمد');
+ok('qty row written', Q.get(9, 5) === 'I-R06' && Q.get(9, 8) === 300 && Q.get(9, 11) === 'S-005' && Q.get(9, 17) === 'مسجَّل' && Q.get(9, 19) === 'حالية — الشارع 4 — بواسطة هاني المهندس', Q.rows[8]);
+ok('eng cannot approve own qty', call({ action: 'approve', idToken: 'T_ENG', type: 'qty', id: 'Q-0006' }).error === 'forbidden');
+ok('acc cannot approve qty', call({ action: 'approve', idToken: 'T_ACC', type: 'qty', id: 'Q-0006' }).error === 'forbidden');
+ok('owner approves qty made by eng', call({ action: 'approve', idToken: 'T_OWNER', type: 'qty', id: 'Q-0006' }).ok && Q.get(9, 17) === 'معتمد');
 r = call({ action: 'submit', idToken: 'T_SITE', op: qtyOp('k-qty-2', { kind: 'تراكمي', cumulative: 11500, exec: 'ذاتي', boq: 'I-B01' }) });
-ok('site submits cumulative qty on a sub item', r.ok && r.id === 'Q-0003' && Q.get(6, 11) === '' && /^تراكمي \(من 11500\)/.test(Q.get(6, 19)), [r, Q.rows[5]]);
-ok('owner cannot approve qty made by site', call({ action: 'approve', idToken: 'T_OWNER', type: 'qty', id: 'Q-0003' }).error === 'forbidden');
-ok('eng approves qty made by site', call({ action: 'approve', idToken: 'T_ENG', type: 'qty', id: 'Q-0003' }).ok);
+ok('site submits cumulative qty on a sub item', r.ok && r.id === 'Q-0007' && Q.get(10, 11) === '' && /^تراكمي \(من 11500\)/.test(Q.get(10, 19)), [r, Q.rows[9]]);
+ok('owner cannot approve qty made by site', call({ action: 'approve', idToken: 'T_OWNER', type: 'qty', id: 'Q-0007' }).error === 'forbidden');
+ok('eng approves qty made by site', call({ action: 'approve', idToken: 'T_ENG', type: 'qty', id: 'Q-0007' }).ok);
 ok('qty on unknown item rejected', call({ action: 'submit', idToken: 'T_SITE', op: qtyOp('k-qty-bad', { boq: 'I-ZZZ' }) }).error === 'invalid');
 
 /* ---- مصروف عهدة ---- */
@@ -163,6 +163,98 @@ ok('unknown action', call({ action: 'dropTables', idToken: 'T_ADMIN' }).error ==
 ok('doGet answers', JSON.parse(env.ctx.doGet().getContent()).ok === true);
 const L = ss.getSheetByName('سجل التطبيق');
 ok('log has one line per accepted action', L.getLastRow() - 3 === 16, L.getLastRow() - 3);
+
+/* ======================= المرحلة التانية: المستخلصات والسندات والأطراف واللوحة ======================= */
+b = call({ action: 'bootstrap', idToken: 'T_ACC', project: 'P-001' });
+ok('chart of accounts', b.accounts.length === 10 && b.accounts.some(a => a[0] === '2100' && a[1] === 'مقاولو الباطن (مستحقات)'), b.accounts);
+ok('parties carry phone', JSON.stringify(b.parties.find(p => p[0] === 'S-001')) === JSON.stringify(['S-001', 'مقاول أول', 'مقاول باطن', '01000000001']), b.parties);
+ok('contract lines with retention', JSON.stringify(b.contracts[0]) === JSON.stringify(['SC-001', 'S-001', 'I-B01', 'تركيب مواسير 250', 'م.ط', 8000, 70, 0.05]), b.contracts);
+const qa = (id) => b.qtyAll.find(q => q[0] === id);
+ok('all project qty in short form', b.qtyAll.length === 7 && qa('Q-0002')[10] === 'SS-001' && qa('Q-0001')[9] === 'CS-001' && qa('Q-0003')[8] === 70000 && qa('Q-0004')[7] === 0 && qa('Q-0004')[5] === 8100, b.qtyAll);
+const va = (id) => b.vouchers.find(v => v[0] === id);
+ok('all project vouchers in short form', b.vouchers.length === 6 && va('RV-0001')[1] === 'قبض' && va('PV-0002')[10] === 'مرفوض' && va('PV-0003')[8] === 'SS-001' && va('PV-0003')[11] === 'مرحَّل', b.vouchers);
+ok('dashboard numbers like the reports file', b.dash.contract === 13500000 && b.dash.executed === 2336850 && b.dash.clientStmts === 2268000 && b.dash.clientStmtsNet === 2154600 &&
+  b.dash.lastClient === 'CS-001' && b.dash.received === 1000000 && b.dash.subWorks === 385000 && b.dash.supplies === 66900 && b.dash.otherExp === 12000 &&
+  b.dash.cost === 463900 && b.dash.subPaid === 175000 && b.dash.supPaid === 0 && b.dash.lg === 50000 && b.dash.netCash === 763000, b.dash);
+ok('spend by account, cancelled excluded', JSON.stringify(b.dash.byAccount) === JSON.stringify([['2100', 'مقاولو الباطن (مستحقات)', 175000, 2], ['1310', 'محتجزات لدى العملاء', 50000, 1], ['5400', 'معدات ونقل ووقود', 12000, 1]]), b.dash.byAccount);
+ok('subcontractor balances', JSON.stringify(b.dash.subs) === JSON.stringify([['S-001', 'مقاول أول', 385000, 385000, 175000, 210000]]), b.dash.subs);
+ok('party stats', b.pstats['C-001'].w === 2268000 && b.pstats['C-001'].r === 1000000 && b.pstats['V-001'].s === 66900 && b.pstats['V-001'].np === 3 && b.pstats['S-001'].p === 175000, b.pstats);
+const cs1 = b.docs.find(d => d.id === 'CS-001'), s1 = b.docs.find(d => d.id === 'SS-001');
+ok('client statement with retention from the sheet formulas', cs1 && cs1.status === 'معتمد' && cs1.works === 2268000 && cs1.retPct === 0.05 && cs1.ret === 113400 && cs1.net === 2154600 && cs1.extNo === '1', cs1);
+ok('statement paid from referenced vouchers', s1 && s1.paid === 100000 && s1.status === 'معتمد', s1);
+
+/* ---- مستخلص جديد (4.2) ---- */
+const stNew = (tok, key, extra) => call(Object.assign({ action: 'stmtNew', idToken: tok, key, project: 'P-001', kind: 'مقاول باطن', party: 'S-001', from: '', to: today(0), qty: ['Q-0003', 'Q-0004'] }, extra || {}));
+const SM = ss.getSheetByName('المستخلصات'), QS = ss.getSheetByName('الكميات المنفذة');
+ok('site cannot create statements', stNew('T_SITE', 'k-stmt-0').error === 'forbidden');
+ok('a registered (not approved) qty is refused', stNew('T_ACC', 'k-stmt-1', { qty: ['Q-0003', 'Q-0005'] }).error === 'conflict');
+ok('a qty already in a statement is refused', stNew('T_ACC', 'k-stmt-1', { qty: ['Q-0002'] }).error === 'conflict');
+ok('another contractor qty is refused', stNew('T_ACC', 'k-stmt-1', { qty: ['Q-0001'] }).error === 'conflict');
+ok('qty outside the period is refused', stNew('T_ACC', 'k-stmt-1', { from: today(1) }).error === 'conflict');
+ok('a supplier is not a contractor', stNew('T_ACC', 'k-stmt-1', { party: 'V-001' }).error === 'invalid');
+ok('empty statement refused', stNew('T_ACC', 'k-stmt-1', { qty: [] }).error === 'invalid');
+ok('refused attempts wrote nothing', SM.getLastRow() === 5 && QS.get(6, 16) === '');
+r = stNew('T_ACC', 'k-stmt-2', { ded: 1000 });
+ok('acc creates a draft statement', r.ok && r.id === 'SS-002', r);
+ok('draft row: type, party, «جارٍ», retention from contract, «مسودة»', SM.get(6, 1) === 'SS-002' && SM.get(6, 2) === 'مقاول باطن' && SM.get(6, 5) === 'S-001' && SM.get(6, 8) === 'جارٍ' &&
+  SM.get(6, 11) === 0.05 && SM.get(6, 14) === 1000 && SM.get(6, 16) === 'مسودة' && /2 محضر — أنشأه عادل المحاسب/.test(SM.get(6, 18)), SM.rows[5]);
+ok('qty linked in the contractor column only', QS.get(6, 16) === 'SS-002' && QS.get(7, 16) === 'SS-002' && QS.get(6, 15) === '' && QS.get(7, 15) === '');
+ok('sheet formulas price the statement (item without rate = 0)', SM.get(6, 9) === 70000 && SM.get(6, 12) === 3500 && SM.get(6, 15) === 65500, [SM.get(6, 9), SM.get(6, 12), SM.get(6, 15)]);
+r = stNew('T_ACC', 'k-stmt-2', { ded: 1000 });
+ok('same request twice returns the same statement', r.ok && r.duplicate && r.id === 'SS-002' && SM.getLastRow() === 6, r);
+b = call({ action: 'bootstrap', idToken: 'T_ACC' });
+let s2 = b.docs.find(d => d.id === 'SS-002');
+ok('draft listed with its log and creator', s2 && s2.status === 'مسودة' && s2.works === 70000 && s2.net === 65500 && s2.mine === true && /^أُنشئ مسودة من 2 محضر/.test(s2.log[0][1]), s2);
+ok('draft cannot get technical approval', call({ action: 'approveTech', idToken: 'T_ENG', type: 'stmt', id: 'SS-002' }).error === 'forbidden');
+ok('eng cannot send a draft', call({ action: 'stmtSend', idToken: 'T_ENG', id: 'SS-002' }).error === 'forbidden');
+r = call({ action: 'stmtSend', idToken: 'T_ACC', id: 'SS-002' });
+ok('acc sends the draft for review', r.ok && SM.get(6, 16) === 'تحت المراجعة', r);
+ok('send again is harmless', call({ action: 'stmtSend', idToken: 'T_ACC', id: 'SS-002' }).already === true);
+ok('statement under review cannot be unlinked', call({ action: 'stmtUnlink', idToken: 'T_ACC', id: 'SS-002' }).error === 'conflict');
+ok('eng technical approval of the new statement', call({ action: 'approveTech', idToken: 'T_ENG', type: 'stmt', id: 'SS-002' }).ok);
+ok('creator cannot final-approve (admin made none, acc has no right)', call({ action: 'approve', idToken: 'T_ACC', type: 'stmt', id: 'SS-002' }).error === 'forbidden');
+
+/* مستخلص عميل من نفس المحضر (خانة تانية)، وبعدين فك المحاضر */
+r = stNew('T_ACC', 'k-stmt-3', { kind: 'عميل', party: 'C-001', qty: ['Q-0004'], retPct: 5, extNo: '2' });
+ok('client statement uses the client column', r.ok && r.id === 'CS-002' && QS.get(7, 15) === 'CS-002' && QS.get(7, 16) === 'SS-002', r);
+ok('client statement at authority price after discount, retention as entered', SM.get(7, 9) === 8100 && SM.get(7, 11) === 0.05 && SM.get(7, 8) === '2' && SM.get(7, 15) === 7695, [SM.get(7, 9), SM.get(7, 15)]);
+ok('client statement refuses qty without authority value', stNew('T_ACC', 'k-stmt-4', { kind: 'عميل', party: 'C-001', qty: ['Q-0003'] }).error === 'conflict');
+r = call({ action: 'stmtUnlink', idToken: 'T_ACC', id: 'CS-002' });
+ok('unlink frees the qty and closes the draft', r.ok && r.n === 1 && QS.get(7, 15) === '' && QS.get(7, 16) === 'SS-002' && SM.get(7, 16) === 'مرفوض' && /^فُكّت محاضره \(1\) — عادل المحاسب/.test(SM.get(7, 18)), [r, SM.get(7, 18)]);
+ok('unlinked statement is worth zero', SM.get(7, 9) === 0 && SM.get(7, 15) === 0);
+b = call({ action: 'bootstrap', idToken: 'T_ACC' });
+const c2 = b.docs.find(d => d.id === 'CS-002');
+ok('unlinked statement shows as cancelled', c2 && c2.status === 'ملغى' && c2.log.some(l => /^أُلغي وفُكّت محاضره/.test(l[1])), c2);
+
+/* ---- السندات من التطبيق (4.3) ---- */
+const vOp = (key, extra) => ({ action: 'submit', key, at: Date.now(), doc: Object.assign({ type: 'voucher', project: 'P-001', date: today(0), kind: 'صرف', party: 'S-001', account: '', amount: 20000, method: 'تحويل', from: 'البنك', ref: '', desc: 'دفعة تحت الحساب', notes: '' }, extra || {}) });
+const V = ss.getSheetByName('السندات');
+ok('site cannot register vouchers', call({ action: 'submit', idToken: 'T_SITE', op: vOp('k-vch-0') }).error === 'forbidden');
+r = call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-1') });
+ok('voucher within the accountant limit is approved on entry', r.ok && r.id === 'PV-0006' && r.status === 'معتمد', r);
+ok('voucher row with the account suggested from the party type', V.get(10, 1) === 'PV-0006' && V.get(10, 2) === 'صرف' && V.get(10, 6) === 'S-001' && V.get(10, 8) === '2100' && V.get(10, 10) === 20000 &&
+  V.get(10, 11) === 'تحويل' && V.get(10, 12) === 'البنك' && V.get(10, 15) === 'معتمد' && V.get(10, 16) === 'عادل المحاسب', V.rows[9]);
+r = call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-1') });
+ok('voucher sent twice: same number and status', r.ok && r.duplicate && r.id === 'PV-0006' && r.status === 'معتمد' && V.getLastRow() === 10, r);
+r = call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-2', { amount: 60000, ref: 'SS-002' }) });
+ok('voucher over the limit waits for the owner', r.ok && r.id === 'PV-0007' && r.status === 'مسجَّل' && V.get(11, 13) === 'SS-002' && V.get(11, 15) === 'مسجَّل', r);
+ok('accountant cannot approve his own voucher', call({ action: 'approve', idToken: 'T_ACC', type: 'voucher', id: 'PV-0007' }).error === 'forbidden');
+ok('owner approves the accountant voucher', call({ action: 'approve', idToken: 'T_OWNER', type: 'voucher', id: 'PV-0007' }).ok && V.get(11, 15) === 'معتمد');
+r = call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-3', { kind: 'قبض', party: 'C-001', amount: 500000 }) });
+ok('receipt numbered RV, client account, approved on entry', r.ok && r.id === 'RV-0002' && r.status === 'معتمد' && V.get(12, 8) === '1300', r);
+ok('reference must be a statement of the same party', call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-4', { ref: 'CS-001' }) }).error === 'invalid');
+ok('unknown account refused', call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-5', { account: '9999' }) }).error === 'invalid');
+ok('voucher needs a description', call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-6', { desc: '  ' }) }).error === 'invalid');
+ok('unknown payment method refused', call({ action: 'submit', idToken: 'T_ACC', op: vOp('k-vch-7', { method: 'فيزا' }) }).error === 'invalid');
+ok('voucher cannot be resubmitted', call({ action: 'resubmit', idToken: 'T_ACC', op: Object.assign(vOp('k-vch-8'), { target: 'k-vch-2' }) }).error === 'invalid');
+b = call({ action: 'bootstrap', idToken: 'T_ACC' });
+const pv6 = b.docs.find(d => d.id === 'PV-0006');
+ok('auto-approved voucher timeline', pv6 && pv6.status === 'معتمد' && pv6.mine === true && pv6.log.some(l => l[1] === 'اعتُمد ضمن حد اعتماد المحاسب'), pv6);
+ok('statement paid from its referenced voucher', b.docs.find(d => d.id === 'SS-002').paid === 60000);
+ok('dashboard follows the new vouchers', b.dash.subPaid === 255000 && b.dash.received === 1500000 && b.dash.netCash === 1500000 - 317000, b.dash);
+ok('contractor stats follow', b.pstats['S-001'].p === 255000 && b.pstats['S-001'].nv === 4 && b.pstats['S-001'].w === 455000, b.pstats['S-001']);
+ok('phase 2 actions logged', L.getLastRow() - 3 === 27, L.getLastRow() - 3);
+ok('no write ever landed on a formula column', ss.sheets.every(sh => sh.writes.every(w => !(sh.formulas[w[1]] && w[0] >= 4))));
 
 results.forEach(x => console.log(x[0], '-', x[1], x[0] === 'FAIL' && x[2] ? '— ' + x[2].slice(0, 400) : ''));
 console.log(results.filter(x => x[0] === 'FAIL').length + ' failed of ' + results.length);

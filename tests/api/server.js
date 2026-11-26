@@ -30,7 +30,7 @@ http.createServer((req, res) => {
   if (req.url === '/sheet') {      /* لقطة من الأوراق للاختبار */
     const pick = n => ss.getSheetByName(n).rows.slice(3).map(r => r.map(v => v instanceof Date ? v.toISOString() : v));
     res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, cors));
-    return res.end(JSON.stringify({ permits: pick('إذونات التوريد'), exp: pick('مصروفات العهدة'), log: pick('سجل التطبيق') }));
+    return res.end(JSON.stringify({ permits: pick('إذونات التوريد'), exp: pick('مصروفات العهدة'), log: pick('سجل التطبيق'), stmts: pick('المستخلصات'), qty: pick('الكميات المنفذة'), vouchers: pick('السندات') }));
   }
   let body = '';
   req.on('data', c => { body += c; });

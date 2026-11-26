@@ -16,26 +16,30 @@
  */
 
 var BDW = {
-  VERSION: '2026-11-26.1',
+  VERSION: '2026-11-26.2',
   CLIENT_ID: '760770227194-t2r0kna5g34igsarqfmf8psm8418ejlr.apps.googleusercontent.com',
   FIRST: 4,                                   // أول صف بيانات في كل الأوراق (1 عنوان، 2 شرح، 3 رؤوس)
   S: {
     permits: 'إذونات التوريد', qty: 'الكميات المنفذة', vouchers: 'السندات', stmts: 'المستخلصات',
-    projects: 'المشروعات', parties: 'الأطراف', items: 'الأصناف', boq: 'المقايسة', subs: 'عقود الباطن', journal: 'اليومية',
+    projects: 'المشروعات', parties: 'الأطراف', items: 'الأصناف', boq: 'المقايسة', subs: 'عقود الباطن', journal: 'اليومية', accounts: 'دليل الحسابات',
     users: 'المستخدمين', settings: 'إعدادات التطبيق', custody: 'العهد', exp: 'مصروفات العهدة', log: 'سجل التطبيق'
   },
+  /* أرقام الأعمدة اللي السكريبت بيقراها أو بيكتبها. الأعمدة اللي فيها معادلات (الأسماء، الإجماليات، قيمة المستخلص
+     وصافيه، سعر الجهاز وفئة الباطن في المحاضر) بتتقري بس، وعمرها ما بتتكتب، عشان المعادلة ما تتكسرش. */
   C: {
     permits: { no: 1, date: 2, project: 3, party: 5, item: 7, qty: 10, price: 11, total: 12, status: 13, photo: 14, by: 15, notes: 16, n: 16 },
-    qty: { no: 1, date: 2, project: 3, item: 5, qty: 8, value: 10, sub: 11, subValue: 14, status: 17, photo: 18, notes: 19, n: 19 },
+    qty: { no: 1, date: 2, project: 3, item: 5, qty: 8, cprice: 9, value: 10, sub: 11, rate: 13, subValue: 14, cStmt: 15, sStmt: 16, status: 17, photo: 18, notes: 19, n: 19 },
     vouchers: { no: 1, kind: 2, date: 3, project: 4, party: 6, account: 8, amount: 10, method: 11, from: 12, ref: 13, desc: 14, status: 15, by: 16, notes: 17, n: 17 },
-    stmts: { no: 1, kind: 2, project: 3, party: 5, date: 7, extNo: 8, current: 9, net: 15, status: 16, approvedAt: 17, notes: 18, plus: 20, n: 20 },
+    stmts: { no: 1, kind: 2, project: 3, party: 5, date: 7, extNo: 8, current: 9, retPct: 11, ret: 12, adv: 13, ded: 14, net: 15, status: 16, approvedAt: 17, notes: 18, plus: 20, n: 20 },
     exp: { no: 1, date: 2, project: 3, custody: 4, cat: 5, desc: 6, amount: 7, status: 8, photo: 9, by: 10, notes: 11, n: 11 },
     custody: { no: 1, project: 2, holder: 3, amount: 4, date: 5, from: 6, status: 7, notes: 8, n: 8 },
     users: { email: 1, name: 2, role: 3, projects: 4, active: 5, notes: 6, n: 6 },
     log: { time: 1, key: 2, id: 3, type: 4, event: 5, email: 6, name: 7, role: 8, details: 9, n: 9 }
   },
   SHEET_OF: { permit: 'permits', qty: 'qty', voucher: 'vouchers', stmt: 'stmts', exp: 'exp' },
-  PREFIX: { permit: 'SP-', qty: 'Q-', exp: 'EX-' },
+  PREFIX: { permit: 'SP-', qty: 'Q-', exp: 'EX-', voucher: 'PV-' },   // سند القبض بيبدأ RV-
+  SUB: 'مقاول باطن', CLIENT: 'عميل',                                // نوع المستخلص في الشيت
+  METHODS: ['نقدي', 'تحويل', 'شيك'], FROMS: ['الخزينة', 'البنك'],
   ROLE: { 'محاسب الموقع': 'site', 'مهندس الموقع': 'eng', 'محاسب المشروع': 'acc', 'المالك': 'owner', 'مدير المنظومة': 'admin' },
   REASONS: ['صورة غير واضحة', 'السعر غير مطابق', 'الكمية غير مطابقة', 'مورد أو صنف خطأ', 'مستند مكرر', 'أخرى'],
   CATS: ['وقود', 'نقل', 'إعاشة', 'أدوات', 'صيانة', 'أخرى'],
@@ -75,6 +79,9 @@ function bdwRoute_(b) {
   if (act === 'approveTech') return bdwDecide_(me, b, 'tech');
   if (act === 'photo') return bdwPhoto_(me, String(b.id || ''));
   if (act === 'custodyRenew') return bdwRenew_(me, String(b.project || ''));
+  if (act === 'stmtNew') return bdwStmtNew_(me, b);
+  if (act === 'stmtSend') return bdwStmtSend_(me, b);
+  if (act === 'stmtUnlink') return bdwStmtUnlink_(me, b);
   throw bdwErr_('invalid', 'طلب غير معروف.');
 }
 
@@ -275,7 +282,10 @@ function bdwDocInfo_(events) {
       o.log.push([ev.d.at || ev.t, 'سُجّل' + (ev.d.queuedAt ? ' بدون إنترنت' : ''), ev.name]);
       o.log.push([ev.t, 'وصل للشيت ورُقِّم ' + ev.id, '']);
     } else if (ev.event === 'resubmit') { o.last = null; o.tech = null; o.log.push([ev.t, 'عُدّل وأُعيد إرساله', ev.name]); o.resub = ev; }
-    else if (ev.event === 'approve') { o.last = ev; o.log.push([ev.t, 'اعتُمد', ev.name]); }
+    else if (ev.event === 'stmtNew') { o.submit = ev; o.log.push([ev.t, 'أُنشئ مسودة من ' + (ev.d.n || 0) + ' محضر', ev.name]); }
+    else if (ev.event === 'stmtSend') { o.sent = ev; o.log.push([ev.t, 'أُرسل للمراجعة', ev.name]); }
+    else if (ev.event === 'stmtUnlink') { o.unlink = ev; o.log.push([ev.t, 'أُلغي وفُكّت محاضره (' + (ev.d.n || 0) + ')', ev.name]); }
+    else if (ev.event === 'approve') { o.last = ev; o.log.push([ev.t, ev.d.auto ? 'اعتُمد ضمن حد اعتماد المحاسب' : 'اعتُمد', ev.name]); }
     else if (ev.event === 'reject') { o.last = ev; o.log.push([ev.t, 'رُفض: ' + (ev.d.reason || ''), ev.name]); }
     else if (ev.event === 'approveTech') { o.tech = ev; o.log.push([ev.t, 'اعتماد فني', ev.name]); }
   });
@@ -285,13 +295,15 @@ function bdwDocInfo_(events) {
 /* ======================= قراءة البيانات (bootstrap) ======================= */
 
 function bdwBootstrap_(me, wanted) {
-  var ss = bdwSS_(), st = bdwSettings_(), tz = bdwTz_(), today = bdwToday_();
+  var ss = bdwSS_(), st = bdwSettings_(), today = bdwToday_();
   var cutRecent = Date.now() - 21 * 864e5, cutApp = Date.now() - 120 * 864e5;
   var P = BDW.C;
 
-  var parties = bdwRows_(bdwSheet_(BDW.S.parties), 6).map(function (r) { return [String(r.v[0]).trim(), String(r.v[1]).trim(), bdwPartyType_(r.v[2]), bdwNum_(r.v[4]) || 0]; });
-  var ptype = {}; parties.forEach(function (p) { ptype[p[0]] = p[2]; });
+  var parties = bdwRows_(bdwSheet_(BDW.S.parties), 6).map(function (r) { return [String(r.v[0]).trim(), String(r.v[1]).trim(), bdwPartyType_(r.v[2]), bdwNum_(r.v[4]) || 0, String(r.v[3] || '').trim()]; });
+  var ptype = {}, pname = {}; parties.forEach(function (p) { ptype[p[0]] = p[2]; pname[p[0]] = p[1]; });
   var items = bdwRows_(bdwSheet_(BDW.S.items), 3).map(function (r) { return [String(r.v[0]).trim(), String(r.v[1]).trim(), String(r.v[2]).trim()]; });
+  var accounts = [], accName = {}, shA = ss.getSheetByName(BDW.S.accounts);
+  if (shA) bdwRows_(shA, 4).forEach(function (r) { var c = String(r.v[0]).trim(); accName[c] = String(r.v[1]).trim(); accounts.push([c, accName[c], Number(r.v[3]) || 0]); });
 
   var projects = bdwRows_(bdwSheet_(BDW.S.projects), 13).map(function (r) {
     var v = r.v, code = String(v[0]).trim(), name = String(v[1]).trim(), parts = name.split(' — ');
@@ -309,18 +321,25 @@ function bdwBootstrap_(me, wanted) {
   var info = function (type, id) { return bdwDocInfo_(log.byDoc[type + '|' + id]); };
 
   /* المقايسة وعقود الباطن */
-  var boqRows = bdwRows_(bdwSheet_(BDW.S.boq), 7).filter(function (r) { return String(r.v[0]).trim() === pc; });
-  var inBoq = {};
-  var boq = boqRows.map(function (r) { var c = String(r.v[2]).trim(); inBoq[c] = 1; return [c, String(r.v[3]).trim(), String(r.v[4]).trim(), bdwNum_(r.v[5]) || 0, bdwNum_(r.v[6]), 0]; });
-  var rates = {}, subItems = [], seenSub = {};
-  bdwRows_(bdwSheet_(BDW.S.subs), 10).forEach(function (r) {
+  var boqRows = bdwRows_(bdwSheet_(BDW.S.boq), 9).filter(function (r) { return String(r.v[0]).trim() === pc; });
+  var inBoq = {}, boqOrig = 0, boqAll = 0;
+  var boq = boqRows.map(function (r) {
+    var c = String(r.v[2]).trim(), tot = bdwNum_(r.v[7]) || 0; inBoq[c] = 1;
+    boqAll += tot; if (String(r.v[8]).trim() === 'أصلية') boqOrig += tot;
+    return [c, String(r.v[3]).trim(), String(r.v[4]).trim(), bdwNum_(r.v[5]) || 0, bdwNum_(r.v[6]), 0];
+  });
+  var rates = {}, subItems = [], seenSub = {}, contracts = [];
+  bdwRows_(bdwSheet_(BDW.S.subs), 12).forEach(function (r) {
     if (String(r.v[1]).trim() !== pc) return;
     var s = String(r.v[3]).trim(), it = String(r.v[5]).trim(), rate = bdwNum_(r.v[9]);
     if (rate !== null) rates[s + '|' + it] = rate;
     if (!inBoq[it] && !seenSub[it]) { seenSub[it] = 1; subItems.push([it, String(r.v[6]).trim(), String(r.v[7]).trim()]); }
+    contracts.push([String(r.v[0]).trim(), s, it, String(r.v[6]).trim(), String(r.v[7]).trim(), bdwNum_(r.v[8]) || 0, rate, bdwNum_(r.v[11]) || 0]);
   });
 
-  var docs = [], done = {}, k = { executed: 0, subWorks: 0, received: 0, subPaid: 0, clientStmts: 0, cost: 0 };
+  /* أرقام اللوحة بنفس معادلات «لوحة المشروع» في ملف التقارير، مع استبعاد الملغى في كل مكان */
+  var docs = [], done = {}, k = { executed: 0, subWorks: 0, supplies: 0, received: 0, out: 0, subPaid: 0, supPaid: 0, lg: 0, otherExp: 0, clientStmts: 0, clientStmtsNet: 0, lastClient: '', lastClientAt: '' };
+  var pst = {}, ps = function (c) { return pst[c] || (pst[c] = { w: 0, n: 0, s: 0, p: 0, r: 0, ns: 0, np: 0, nv: 0 }); };
   var keep = function (d) {
     if (d.status === 'مسجَّل' || d.status === 'تحت المراجعة' || d.status === 'مرفوض') return true;
     if (d.fromApp && d.at >= cutApp) return true;
@@ -353,6 +372,7 @@ function bdwBootstrap_(me, wanted) {
       supplyCount[party] = supplyCount[party] || {}; supplyCount[party][it] = (supplyCount[party][it] || 0) + 1;
     }
     if (String(v[C.project - 1]).trim() !== pc) return;
+    if (st0 !== 'ملغى') { var tot = bdwNum_(v[C.total - 1]) || 0; k.supplies += tot; if (party) { ps(party).s += tot; ps(party).np++; } }
     var notes = bdwPermitNotes_(v[C.notes - 1]);
     var inf2 = info('permit', id), sub = inf2.submit;
     var d = base('permit', id, iso, st0, pc, { party: party, item: it, qty: bdwNum_(v[C.qty - 1]) || 0, price: price, photo: bdwPhotoRef_(v[C.photo - 1]),
@@ -362,47 +382,74 @@ function bdwBootstrap_(me, wanted) {
   var supplies = {};
   Object.keys(supplyCount).forEach(function (s) { supplies[s] = Object.keys(supplyCount[s]).sort(function (a, b) { return supplyCount[s][b] - supplyCount[s][a]; }); });
 
-  /* الكميات المنفذة */
+  /* الكميات المنفذة: كل محاضر المشروع بشكل مختصر (للمستخلصات)، والمستند الكامل للي محتاج قرار أو حديث */
+  var qtyAll = [];
   bdwRows_(bdwSheet_(BDW.S.qty), P.qty.n).forEach(function (r) {
     var v = r.v, C = P.qty, id = String(v[0]).trim();
     if (String(v[C.project - 1]).trim() !== pc) return;
     var iso = bdwIso_(v[C.date - 1]), st0 = String(v[C.status - 1]).trim(), it = String(v[C.item - 1]).trim(), q = bdwNum_(v[C.qty - 1]) || 0;
+    var subc = String(v[C.sub - 1]).trim();
+    qtyAll.push([id, iso, it, q, bdwNum_(v[C.cprice - 1]) || 0, bdwNum_(v[C.value - 1]) || 0, subc, subc ? (bdwNum_(v[C.rate - 1]) || 0) : null,
+      bdwNum_(v[C.subValue - 1]) || 0, String(v[C.cStmt - 1] || '').trim(), String(v[C.sStmt - 1] || '').trim(), st0]);
     var notes = bdwQtyNotes_(v[C.notes - 1]), sub = info('qty', id).submit, rs = info('qty', id).resub;
-    var d = base('qty', id, iso, st0, pc, { boq: it, qty: q, kind: notes.kind, exec: String(v[C.sub - 1]).trim() || 'ذاتي', photo: bdwPhotoRef_(v[C.photo - 1]), notes: notes.text,
+    var d = base('qty', id, iso, st0, pc, { boq: it, qty: q, kind: notes.kind, exec: subc || 'ذاتي', photo: bdwPhotoRef_(v[C.photo - 1]), notes: notes.text,
       cumulative: rs && rs.d.cumulative != null ? rs.d.cumulative : (sub && sub.d.cumulative != null ? sub.d.cumulative : undefined) }, notes.by);
     if (!d) return;
     if (d.status !== 'ملغى' && d.status !== 'مرفوض') {
-      k.executed += bdwNum_(v[C.value - 1]) || 0; k.subWorks += bdwNum_(v[C.subValue - 1]) || 0;
+      k.executed += bdwNum_(v[C.value - 1]) || 0;
       if (bdwIso_(new Date(d.at)) !== today) done[it] = (done[it] || 0) + q;   /* اللي اتسجّل النهارده التطبيق بيحسبه بنفسه */
     }
     if (keep(d)) docs.push(d);
   });
   boq.forEach(function (b) { b[5] = done[b[0]] || 0; });
 
-  /* السندات */
+  /* السندات: كلها بشكل مختصر لشاشة السندات وبطاقة الطرف، وسندات الصرف اللي محتاجة قرار أو حديثة كمستندات */
+  var vouchers = [], paidByRef = {}, byAcc = {};
   bdwRows_(bdwSheet_(BDW.S.vouchers), P.vouchers.n).forEach(function (r) {
     var v = r.v, C = P.vouchers, id = String(v[0]).trim();
     if (String(v[C.project - 1]).trim() !== pc) return;
     var kind = String(v[C.kind - 1]).trim(), st0 = String(v[C.status - 1]).trim(), amt = bdwNum_(v[C.amount - 1]) || 0, party = String(v[C.party - 1]).trim();
+    var acc = String(v[C.account - 1] || '').trim(), ref = String(v[C.ref - 1] || '').trim(), iso = bdwIso_(v[C.date - 1]);
+    var inf = info('voucher', id), stApp = bdwStatus_('voucher', st0, inf.last && inf.last.event === 'reject');
     if (st0 !== 'ملغى') {
-      if (kind === 'قبض') k.received += amt;
-      else if (ptype[party] === 'مقاول باطن') k.subPaid += amt;
+      if (kind === 'قبض') { k.received += amt; if (party) ps(party).r += amt; }
+      else {
+        k.out += amt;
+        if (acc === '2100') k.subPaid += amt;
+        else if (acc === '2200') k.supPaid += amt;
+        if (acc.charAt(0) === '1') k.lg += amt;
+        else if (acc.charAt(0) !== '2') k.otherExp += amt;
+        byAcc[acc] = byAcc[acc] || [0, 0]; byAcc[acc][0] += amt; byAcc[acc][1]++;
+        if (party) { ps(party).p += amt; ps(party).nv++; }
+        if (ref) paidByRef[ref] = (paidByRef[ref] || 0) + amt;
+      }
     }
+    vouchers.push([id, kind, iso, party, acc, amt, String(v[C.method - 1] || ''), String(v[C.from - 1] || ''), ref, String(v[C.desc - 1] || ''), stApp, String(v[C.by - 1] || '')]);
     if (kind !== 'صرف') return;
-    var d = base('voucher', id, bdwIso_(v[C.date - 1]), st0, pc, { party: party, amount: amt, method: String(v[C.method - 1] || ''), from: String(v[C.from - 1] || ''),
-      account: String(v[C.account - 1] || ''), notes: String(v[C.desc - 1] || '') }, v[C.by - 1]);
+    var d = base('voucher', id, iso, st0, pc, { party: party, amount: amt, method: String(v[C.method - 1] || ''), from: String(v[C.from - 1] || ''),
+      account: acc, ref: ref, notes: String(v[C.desc - 1] || '') }, v[C.by - 1]);
     if (d && keep(d)) docs.push(d);
   });
 
-  /* المستخلصات */
+  /* المستخلصات: كلها، بقيمها من معادلات الشيت */
   bdwRows_(bdwSheet_(BDW.S.stmts), P.stmts.n).forEach(function (r) {
     var v = r.v, C = P.stmts, id = String(v[0]).trim();
     if (String(v[C.project - 1]).trim() !== pc) return;
-    var st0 = String(v[C.status - 1]).trim(), kind = String(v[C.kind - 1]).trim(), net = bdwNum_(v[C.net - 1]) || 0;
-    if (kind === 'عميل' && (st0 === 'معتمد' || st0 === 'مصروف')) k.clientStmts += net;
-    var d = base('stmt', id, bdwIso_(v[C.date - 1]), st0, pc, { party: String(v[C.party - 1]).trim(), kind: kind,
-      gross: (bdwNum_(v[C.current - 1]) || 0) + (bdwNum_(v[C.plus - 1]) || 0), net: net, paid: null, notes: bdwStripMark_(v[C.notes - 1]) }, '');
-    if (d && keep(d)) docs.push(d);
+    var st0 = String(v[C.status - 1]).trim(), kind = String(v[C.kind - 1]).trim(), party = String(v[C.party - 1]).trim(), iso = bdwIso_(v[C.date - 1]);
+    var I = bdwNum_(v[C.current - 1]) || 0, T = bdwNum_(v[C.plus - 1]) || 0, O = bdwNum_(v[C.net - 1]) || 0;
+    var posted = st0 === 'تحت المراجعة' || st0 === 'معتمد' || st0 === 'مصروف';     /* نفس شرط الترحيل في اليومية */
+    if (kind === BDW.CLIENT && (st0 === 'معتمد' || st0 === 'مصروف')) {
+      k.clientStmts += I; k.clientStmtsNet += O;
+      if (iso >= k.lastClientAt) { k.lastClientAt = iso; k.lastClient = id; }
+    }
+    if (kind === BDW.SUB && posted) k.subWorks += I;
+    if (posted && party) { ps(party).w += I; ps(party).n += O; ps(party).ns++; }
+    var d = base('stmt', id, iso, st0, pc, { party: party, kind: kind, extNo: String(v[C.extNo - 1] || '').trim(), works: I, plus: T, gross: I + T,
+      retPct: bdwNum_(v[C.retPct - 1]) || 0, ret: bdwNum_(v[C.ret - 1]) || 0, adv: bdwNum_(v[C.adv - 1]) || 0, ded: bdwNum_(v[C.ded - 1]) || 0, net: O,
+      paid: paidByRef[id] ? paidByRef[id] : null, approvedAt: bdwIso_(v[C.approvedAt - 1]), notes: bdwStripMark_(v[C.notes - 1]) }, '');
+    if (!d) return;
+    if (info('stmt', id).unlink) d.status = 'ملغى';
+    docs.push(d);
   });
 
   /* العهدة ومصروفاتها */
@@ -422,14 +469,13 @@ function bdwBootstrap_(me, wanted) {
     if (d && (keep(d) || (custody && cno === custody.no))) docs.push(d);
   });
 
-  /* اليومية: التكلفة المحققة للمشروع وأرصدة الأطراف (له + / عليه −) */
+  /* اليومية: أرصدة الأطراف (له + / عليه −) من كل المشروعات */
   var balances = {};
   parties.forEach(function (p) { if (p[3]) balances[p[0]] = p[3]; });
   var balAcc = { '1300': 1, '1310': 1, '1400': 1, '2100': 1, '2110': 1, '2200': 1, '2300': 1 };
   var shJ = ss.getSheetByName(BDW.S.journal);
   if (shJ) bdwRows_(shJ, 10).forEach(function (r) {
     var v = r.v, acc = String(v[7]).trim(), dr = bdwNum_(v[8]) || 0, cr = bdwNum_(v[9]) || 0, party = String(v[6]).trim();
-    if (String(v[5]).trim() === pc && acc.charAt(0) === '5') k.cost += dr - cr;
     if (party && balAcc[acc]) balances[party] = (balances[party] || 0) + cr - dr;
   });
 
@@ -437,14 +483,26 @@ function bdwBootstrap_(me, wanted) {
   if (docs.length > 600) docs = docs.slice(0, 600);
   docs.forEach(function (d) { delete d.fromApp; });
 
+  var contract = boqOrig || proj.value, contractNet = contract * (1 - proj.discount);
+  var dash = {
+    at: Date.now(), contract: contract, contractAll: boqAll || proj.value, discount: proj.discount, contractNet: contractNet,
+    executed: k.executed, clientStmts: k.clientStmts, clientStmtsNet: k.clientStmtsNet, lastClient: k.lastClient, received: k.received,
+    cost: k.subWorks + k.supplies + k.otherExp, subWorks: k.subWorks, subPaid: k.subPaid, supplies: k.supplies, supPaid: k.supPaid,
+    otherExp: k.otherExp, lg: k.lg, out: k.out, netCash: k.received - k.out,
+    byAccount: Object.keys(byAcc).map(function (a) { return [a, accName[a] || a, byAcc[a][0], byAcc[a][1]]; }).sort(function (x, y) { return y[2] - x[2]; }),
+    subs: Object.keys(pst).filter(function (c) { return ptype[c] === BDW.SUB && (pst[c].w || pst[c].p); })
+      .map(function (c) { var s = pst[c]; return [c, pname[c] || c, s.w, s.n, s.p, s.n - s.p]; }).sort(function (x, y) { return y[5] - x[5]; })
+  };
+
   return {
     ok: true, version: BDW.VERSION, serverTime: Date.now(),
     user: { email: me.email, name: me.name, role: me.role },
     settings: { voucherLimit: st.voucherLimit, priceWarnPct: st.priceWarnPct, lateDays: st.lateDays, siteRadiusKm: st.siteRadiusKm, postExp: st.postExp },
-    projects: projects, parties: parties.map(function (p) { return [p[0], p[1], p[2]]; }), balances: balances, items: items,
-    supplies: supplies, lastPrice: lastPrice, boq: boq, subItems: subItems, rates: rates,
-    custody: custody, kpis: { contract: proj.value, contractNet: proj.value * (1 - proj.discount), executed: k.executed, clientStmts: k.clientStmts,
-      cost: k.cost, received: k.received, subWorks: k.subWorks, subPaid: k.subPaid },
+    projects: projects, parties: parties.map(function (p) { return [p[0], p[1], p[2], p[4]]; }), balances: balances, items: items, accounts: accounts,
+    supplies: supplies, lastPrice: lastPrice, boq: boq, subItems: subItems, rates: rates, contracts: contracts,
+    custody: custody, kpis: { contract: contract, contractNet: contractNet, executed: k.executed, clientStmts: k.clientStmts, clientStmtsNet: k.clientStmtsNet,
+      cost: dash.cost, received: k.received, subWorks: k.subWorks, subPaid: k.subPaid },
+    dash: dash, pstats: pst, qtyAll: qtyAll, vouchers: vouchers,
     docs: docs
   };
 }
@@ -452,10 +510,10 @@ function bdwBootstrap_(me, wanted) {
 function bdwStatus_(type, s, rejected) {
   s = String(s || '').trim();
   if (type === 'stmt') {
-    if (s === 'تحت المراجعة') return s;
+    if (s === 'تحت المراجعة' || s === 'مسودة') return s;
     if (s === 'معتمد' || s === 'مصروف') return 'معتمد';
     if (s === 'مرفوض') return 'مرفوض';
-    return null;                                        /* المسودة ما بتظهرش */
+    return null;
   }
   if (s === 'ملغى') return rejected ? 'مرفوض' : 'ملغى';
   if (s === 'معتمد' || s === 'مسدَّد') return 'معتمد';
@@ -492,12 +550,13 @@ function bdwSubmit_(me, op, isResub) {
   if (!op || typeof op !== 'object' || !/^[\w-]{6,64}$/.test(String(op.key || ''))) throw bdwErr_('invalid', 'المستند ناقص بياناته.');
   var d = op.doc || {}, type = d.type;
   if (!BDW.PREFIX[type]) throw bdwErr_('invalid', 'نوع مستند غير معروف.');
-  var can = { permit: ['site', 'acc', 'admin'], qty: ['site', 'eng', 'admin'], exp: ['site'] }[type];
+  var can = { permit: ['site', 'acc', 'admin'], qty: ['site', 'eng', 'admin'], exp: ['site'], voucher: ['acc', 'admin'] }[type];
+  if (isResub && type === 'voucher') throw bdwErr_('invalid', 'السند ما بيتعدّلش؛ اعمل سند جديد.');
   if (can.indexOf(me.role) < 0) throw bdwErr_('forbidden', 'دورك ما بيسمحش بتسجيل المستند ده.');
   if (!bdwCanSee_(me, String(d.project || ''))) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
 
   var seen = bdwLogIndex_().byKey[op.key];                    /* نفس المستند وصل قبل كده (إعادة محاولة) */
-  if (seen) return { ok: true, id: seen.id, duplicate: true };
+  if (seen) return bdwSeen_(seen);
 
   var clean = bdwValidate_(me, type, d);                      /* بيرمي رسالة واضحة لو فيه حقل غلط */
   var target = null;
@@ -511,15 +570,15 @@ function bdwSubmit_(me, op, isResub) {
       try { var file = DriveApp.getFileById(f[0]); file.setName(file.getName().replace(BDW.PREFIX[type] + 'جديد', id)); } catch (e) { }
     });
   };
-  if (d.photoData) photoUrl = bdwSaveImage_(d.photoData, stamp + ' — صورة');
-  else if (!isResub) throw bdwErr_('invalid', 'الصورة ما وصلتش مع المستند. افتحه وصوّره تاني.');
+  if (d.photoData && type !== 'voucher') photoUrl = bdwSaveImage_(d.photoData, stamp + ' — صورة');
+  else if (!isResub && type !== 'voucher') throw bdwErr_('invalid', 'الصورة ما وصلتش مع المستند. افتحه وصوّره تاني.');
   if (d.signData) signId = bdwDriveId_(bdwSaveImage_(d.signData, stamp + ' — توقيع'));
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) throw bdwErr_('busy', 'السكريبت مشغول دلوقتي. هيتبعت تاني لوحده.');
   try {
     var again = bdwLogIndex_().byKey[op.key];
-    if (again) return { ok: true, id: again.id, duplicate: true };
+    if (again) return bdwSeen_(again);
     var det = { at: Number(op.at) || Date.now(), loc: clean.loc };
     if (op.queuedAt) det.queuedAt = Number(op.queuedAt);
     if (type === 'permit') { det.paperNo = clean.paperNo; if (signId) det.sign = 'drive:' + signId; }
@@ -530,13 +589,25 @@ function bdwSubmit_(me, op, isResub) {
       bdwLog_(op.key, target.id, type, 'resubmit', me, det);
       return { ok: true, id: target.id };
     }
+    if (type === 'voucher') { det.kind = clean.kind; det.amount = clean.amount; }
     var id = bdwAppend_(me, type, clean, photoUrl);
     bdwLog_(op.key, id, type, 'submit', me, det);
     rename(id);
+    if (type === 'voucher') {                                   /* سند القبض، وسند الصرف لحد حد المحاسب، بيتعتمدوا مع التسجيل */
+      if (clean.autoOk) bdwLog_(op.key, id, type, 'approve', me, { auto: true });
+      return { ok: true, id: id, status: clean.autoOk ? 'معتمد' : 'مسجَّل' };
+    }
     return { ok: true, id: id };
   } finally {
     lock.releaseLock();
   }
+}
+
+/* المستند ده وصل قبل كده: نفس الرقم (وحالة السند لو سند) */
+function bdwSeen_(ev) {
+  var r = { ok: true, id: ev.id, duplicate: true };
+  if (ev.type === 'voucher') r.status = ev.event === 'approve' ? 'معتمد' : 'مسجَّل';
+  return r;
 }
 
 /* التحقق من الحقول على السيرفر (نفس قواعد التطبيق، عشان محدش يبعت بيانات غلط من برّه) */
@@ -575,13 +646,39 @@ function bdwValidate_(me, type, d) {
     if (o.kind === 'تراكمي') { o.cumulative = Number(d.cumulative); if (!(o.cumulative > 0)) bad('اكتب الكمية التراكمية.'); }
     o.exec = String(d.exec || 'ذاتي');
     if (o.exec !== 'ذاتي' && codes(BDW.S.parties, true)[o.exec] !== 'مقاول باطن') bad('مقاول الباطن مش موجود في الأطراف.');
-  } else {
+  } else if (type === 'exp') {
     o.cat = String(d.cat || ''); o.desc = String(d.desc || '').trim().slice(0, 200); o.amount = Number(d.amount);
     if (BDW.CATS.indexOf(o.cat) < 0) bad('اختار تصنيف المصروف.');
     if (!o.desc) bad('اكتب بيان المصروف.');
     if (!(o.amount > 0)) bad('المبلغ لازم يكون أكبر من صفر.');
+  } else {
+    var pt = codes(BDW.S.parties, true), accs = {};
+    bdwRows_(bdwSheet_(BDW.S.accounts), 2).forEach(function (r) { accs[String(r.v[0]).trim()] = 1; });
+    o.kind = d.kind === 'قبض' ? 'قبض' : 'صرف';
+    o.party = String(d.party || '').trim();
+    if (!pt[o.party]) bad('الطرف مش موجود في الأطراف.');
+    o.account = String(d.account || '').trim() || bdwDefaultAccount_(pt[o.party]);
+    if (!accs[o.account]) bad('الحساب مش موجود في دليل الحسابات.');
+    o.amount = Math.round(Number(d.amount) * 100) / 100;
+    if (!(o.amount > 0)) bad('المبلغ لازم يكون أكبر من صفر.');
+    o.method = String(d.method || ''); o.from = String(d.from || '');
+    if (BDW.METHODS.indexOf(o.method) < 0) bad('اختار طريقة الدفع.');
+    if (BDW.FROMS.indexOf(o.from) < 0) bad('اختار الخزينة أو البنك.');
+    o.desc = String(d.desc || '').trim().slice(0, 200).replace(/\n/g, ' ');
+    if (!o.desc) bad('اكتب بيان السند.');
+    o.ref = String(d.ref || '').trim();
+    if (o.ref && !bdwRows_(bdwSheet_(BDW.S.stmts), 5).some(function (r) { return String(r.v[0]).trim() === o.ref && String(r.v[4]).trim() === o.party && String(r.v[2]).trim() === o.project; }))
+      bad('المرجع مش مستخلص للطرف ده في المشروع.');
+    o.autoOk = o.kind === 'قبض' || o.amount <= bdwSettings_().voucherLimit;
   }
   return o;
+}
+/* الحساب المقترح من نوع الطرف */
+function bdwDefaultAccount_(ptype) {
+  if (ptype === 'مقاول باطن') return '2100';
+  if (ptype === 'مورد') return '2200';
+  if (ptype === 'عميل') return '1300';
+  return '';
 }
 
 /* صف جديد في ورقة المستند */
@@ -597,6 +694,13 @@ function bdwAppend_(me, type, o, photoUrl) {
     sh = bdwSheet_(BDW.S.qty); C = BDW.C.qty; r = bdwNextRow_(sh); id = bdwNextId_(sh, 'Q-', 4);
     bdwSet_(sh, r, [[C.no, id], [C.date, bdwToDate_(o.date)], [C.project, o.project], [C.item, o.boq], [C.qty, o.qty], [C.sub, o.exec === 'ذاتي' ? '' : o.exec],
       [C.status, 'مسجَّل'], [C.photo, photoUrl], [C.notes, bdwQtyNoteText_(o, me)]]);
+    return id;
+  }
+  if (type === 'voucher') {
+    sh = bdwSheet_(BDW.S.vouchers); C = BDW.C.vouchers; r = bdwNextRow_(sh); id = bdwNextId_(sh, o.kind === 'قبض' ? 'RV-' : 'PV-', 4);
+    bdwSet_(sh, r, [[C.no, id], [C.kind, o.kind], [C.date, bdwToDate_(o.date)], [C.project, o.project], [C.party, o.party], [C.account, o.account],
+      [C.amount, o.amount], [C.method, o.method], [C.from, o.from], [C.ref, o.ref], [C.desc, o.desc], [C.status, o.autoOk ? 'معتمد' : 'مسجَّل'],
+      [C.by, me.name], [C.notes, o.notes]]);
     return id;
   }
   var cu = bdwOpenCustody_(me, o.project);
@@ -715,6 +819,128 @@ function bdwAllowed_(role, type, status, kind, amount, inf, st) {
   if (role === 'admin') return type === 'permit' || type === 'exp' || (type === 'voucher' && amount <= lim) || (type === 'qty' && byEng);
   if (role === 'owner') return (type === 'voucher' && amount > lim) || (type === 'qty' && byEng);
   return false;
+}
+
+/* ======================= المستخلصات (4.2): مسودة من المحاضر المعتمدة، إرسال للمراجعة، فك المحاضر ======================= */
+
+/* المستخلص بيتبني من المحاضر المعتمدة اللي خانة مستخلصها فاضية. السكريبت بيكتب رقمه في المحاضر، ومعادلة الشيت
+   بتحسب قيمة الأعمال والمحتجز والصافي. المستخلص بيبدأ «مسودة» عشان ما يترحّلش في اليومية قبل ما يتراجع. */
+function bdwStmtNew_(me, b) {
+  if (me.role !== 'acc' && me.role !== 'admin') throw bdwErr_('forbidden', 'إنشاء المستخلص لمحاسب المشروع.');
+  var bad = function (m) { throw bdwErr_('invalid', m); };
+  var key = String(b.key || '');
+  if (!/^[\w-]{6,64}$/.test(key)) bad('الطلب ناقص بياناته.');
+  var project = String(b.project || ''), kind = b.kind === BDW.CLIENT ? BDW.CLIENT : BDW.SUB, party = String(b.party || '').trim();
+  if (!bdwCanSee_(me, project)) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
+  var from = String(b.from || ''), to = String(b.to || ''), today = bdwToday_();
+  if (from && !bdwToDate_(from)) bad('بداية الفترة مش مقروءة.');
+  if (!bdwToDate_(to)) bad('اختار نهاية الفترة.');
+  if (to > today) bad('نهاية الفترة بعد النهارده.');
+  if (from && from > to) bad('بداية الفترة بعد نهايتها.');
+  var ids = [], seenId = {};
+  (Array.isArray(b.qty) ? b.qty : []).forEach(function (q) { q = String(q).trim(); if (q && !seenId[q]) { seenId[q] = 1; ids.push(q); } });
+  if (!ids.length) bad('مفيش محاضر معتمدة للمستخلص في الفترة دي.');
+  if (ids.length > 1000) bad('المحاضر كتير على مستخلص واحد؛ قسّم الفترة.');
+  var adv = Number(b.adv || 0), ded = Number(b.ded || 0);
+  if (!(adv >= 0) || !(ded >= 0)) bad('الخصومات لازم تكون أرقام موجبة.');
+  var extNo = String(b.extNo || '').trim().slice(0, 30), notes = String(b.notes || '').trim().slice(0, 300).replace(/\n/g, ' ');
+  var pt = {};
+  bdwRows_(bdwSheet_(BDW.S.parties), 3).forEach(function (r) { pt[String(r.v[0]).trim()] = bdwPartyType_(r.v[2]); });
+  if (pt[party] !== kind) bad(kind === BDW.SUB ? 'اختار مقاول باطن من الأطراف.' : 'اختار العميل (الجهة المالكة) من الأطراف.');
+  var retPct = 0;
+  if (kind === BDW.SUB) {                                   /* نسبة المحتجز من عقد المقاول في المشروع */
+    bdwRows_(bdwSheet_(BDW.S.subs), 12).forEach(function (r) {
+      if (String(r.v[1]).trim() === project && String(r.v[3]).trim() === party) { var x = bdwNum_(r.v[11]) || 0; if (x > 1) x = x / 100; if (x > retPct) retPct = x; }
+    });
+  } else {
+    retPct = Number(b.retPct || 0); if (retPct > 1) retPct = retPct / 100;
+    if (!(retPct >= 0 && retPct <= 0.5)) bad('نسبة المحتجز بين صفر و50%.');
+  }
+  var seen = bdwLogIndex_().byKey[key];
+  if (seen) return { ok: true, id: seen.id, duplicate: true };
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw bdwErr_('busy', 'السكريبت مشغول دلوقتي. جرّب تاني بعد ثواني.');
+  try {
+    var again = bdwLogIndex_().byKey[key];
+    if (again) return { ok: true, id: again.id, duplicate: true };
+    var sq = bdwSheet_(BDW.S.qty), Q = BDW.C.qty, byId = {}, col = kind === BDW.CLIENT ? Q.cStmt : Q.sStmt;
+    bdwRows_(sq, Q.n).forEach(function (r) { byId[String(r.v[0]).trim()] = r; });
+    ids.forEach(function (q) {                              /* كل محضر لازم يكون لسه صالح: ممكن حد سبقك عليه */
+      var r = byId[q], why = '';
+      if (!r) why = 'مش موجود في الشيت';
+      else {
+        var v = r.v, iso = bdwIso_(v[Q.date - 1]);
+        if (String(v[Q.project - 1]).trim() !== project) why = 'تبع مشروع تاني';
+        else if (String(v[Q.status - 1]).trim() !== 'معتمد') why = 'مش معتمد';
+        else if (String(v[col - 1] || '').trim()) why = 'دخل المستخلص ' + String(v[col - 1]).trim();
+        else if ((from && iso < from) || iso > to) why = 'خارج الفترة';
+        else if (kind === BDW.SUB && String(v[Q.sub - 1]).trim() !== party) why = 'مش تبع المقاول ده';
+        else if (kind === BDW.CLIENT && !((bdwNum_(v[Q.value - 1]) || 0) > 0)) why = 'مالوش قيمة بسعر الجهاز';
+      }
+      if (why) throw bdwErr_('conflict', 'المحضر ' + q + ' ' + why + '. حدّث البيانات وجرّب تاني.');
+    });
+    var sh = bdwSheet_(BDW.S.stmts), C = BDW.C.stmts, row = bdwNextRow_(sh), id = bdwNextId_(sh, kind === BDW.CLIENT ? 'CS-' : 'SS-', 3);
+    var note = 'الفترة ' + (from ? 'من ' + from + ' ' : '') + 'إلى ' + to + ' — ' + ids.length + ' محضر — أنشأه ' + me.name + (notes ? ' — ' + notes : '');
+    bdwSet_(sh, row, [[C.no, id], [C.kind, kind], [C.project, project], [C.party, party], [C.date, bdwToDate_(today)],
+      [C.extNo, extNo || (kind === BDW.SUB ? 'جارٍ' : '')], [C.retPct, retPct], [C.adv, adv], [C.ded, ded], [C.status, 'مسودة'], [C.notes, note]]);
+    ids.forEach(function (q) { sq.getRange(byId[q].row, col).setValue(id); });
+    bdwLog_(key, id, 'stmt', 'stmtNew', me, { n: ids.length, qty: ids, from: from, to: to });
+    return { ok: true, id: id };
+  } finally {
+    lock.releaseLock();
+  }
+}
+/* المسودة بتتبعت للمراجعة: الاعتماد الفني من المهندس، وبعده النهائي من المالك */
+function bdwStmtSend_(me, b) {
+  if (me.role !== 'acc' && me.role !== 'admin') throw bdwErr_('forbidden', 'إرسال المستخلص لمحاسب المشروع.');
+  var id = String(b.id || '').trim();
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw bdwErr_('busy', 'السكريبت مشغول دلوقتي. جرّب تاني بعد ثواني.');
+  try {
+    var sh = bdwSheet_(BDW.S.stmts), C = BDW.C.stmts, hit = bdwFindRow_(sh, id, C.n);
+    if (!hit) throw bdwErr_('not_found', 'المستخلص ' + id + ' مش موجود في الشيت.');
+    if (!bdwCanSee_(me, String(hit.v[C.project - 1]).trim())) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
+    var st0 = String(hit.v[C.status - 1]).trim();
+    if (st0 === 'تحت المراجعة') return { ok: true, already: true };
+    if (st0 !== 'مسودة') throw bdwErr_('conflict', 'المستخلص ' + id + ' مش مسودة.');
+    if (!bdwStmtLinks_(id, String(hit.v[C.kind - 1]).trim()).length) throw bdwErr_('invalid', 'مفيش محاضر مربوطة بالمستخلص.');
+    bdwSet_(sh, hit.row, [[C.status, 'تحت المراجعة']]);
+    var inf = bdwDocInfo_(bdwLogIndex_().byDoc['stmt|' + id]);
+    bdwLog_(inf.submit ? inf.submit.key : 'id:' + id, id, 'stmt', 'stmtSend', me, null);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+/* المسودة أو المرفوض: المحاضر بترجع فاضية عشان تدخل مستخلص جديد، والمستخلص يفضل في الشيت «مرفوض» بقيمة صفر */
+function bdwStmtUnlink_(me, b) {
+  if (me.role !== 'acc' && me.role !== 'admin') throw bdwErr_('forbidden', 'فك المحاضر لمحاسب المشروع.');
+  var id = String(b.id || '').trim();
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw bdwErr_('busy', 'السكريبت مشغول دلوقتي. جرّب تاني بعد ثواني.');
+  try {
+    var sh = bdwSheet_(BDW.S.stmts), C = BDW.C.stmts, hit = bdwFindRow_(sh, id, C.n);
+    if (!hit) throw bdwErr_('not_found', 'المستخلص ' + id + ' مش موجود في الشيت.');
+    if (!bdwCanSee_(me, String(hit.v[C.project - 1]).trim())) throw bdwErr_('forbidden', 'المشروع ده مش من مشروعاتك.');
+    var st0 = String(hit.v[C.status - 1]).trim(), kind = String(hit.v[C.kind - 1]).trim();
+    if (st0 !== 'مسودة' && st0 !== 'مرفوض') throw bdwErr_('conflict', 'المستخلص ' + id + ' ' + st0 + '؛ فك المحاضر بس للمسودة أو المرفوض.');
+    var links = bdwStmtLinks_(id, kind), Q = BDW.C.qty, sq = bdwSheet_(BDW.S.qty), col = kind === BDW.CLIENT ? Q.cStmt : Q.sStmt;
+    links.forEach(function (l) { sq.getRange(l.row, col).setValue(''); });
+    var line = 'فُكّت محاضره (' + links.length + ') — ' + me.name + ' — ' + bdwToday_();
+    bdwSet_(sh, hit.row, [[C.status, 'مرفوض'], [C.notes, line + '\n' + String(hit.v[C.notes - 1] || '')]]);
+    var inf = bdwDocInfo_(bdwLogIndex_().byDoc['stmt|' + id]);
+    bdwLog_(inf.submit ? inf.submit.key : 'id:' + id, id, 'stmt', 'stmtUnlink', me, { n: links.length, qty: links.map(function (l) { return l.id; }) });
+    return { ok: true, n: links.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+/* المحاضر المربوطة بمستخلص: مستخلص العميل في خانة، ومستخلص الباطن في خانة تانية */
+function bdwStmtLinks_(id, kind) {
+  var Q = BDW.C.qty, col = kind === BDW.CLIENT ? Q.cStmt : Q.sStmt, out = [];
+  bdwRows_(bdwSheet_(BDW.S.qty), Q.n).forEach(function (r) { if (String(r.v[col - 1] || '').trim() === id) out.push({ id: String(r.v[0]).trim(), row: r.row }); });
+  return out;
 }
 
 /* ======================= الصور ======================= */

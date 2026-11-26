@@ -23,9 +23,16 @@ class Range {
 ['setFontWeight', 'setFontSize', 'setFontColor', 'setBackground', 'setHorizontalAlignment', 'setWrap', 'setNumberFormat'].forEach(m => { Range.prototype[m] = function () { return this; }; });
 
 class Sheet {
-  constructor(name, rows, validators) { this.name = name; this.rows = rows || []; this.validators = validators || {}; this.writes = []; }
-  get(r, c) { const row = this.rows[r - 1]; const v = row ? row[c - 1] : undefined; return v === undefined || v === null ? '' : v; }
+  /* formulas: { عمود: (r) => قيمة } — زي ARRAYFORMULA في الشيت الحقيقي: القيمة محسوبة، والكتابة فوقها بتكسرها */
+  constructor(name, rows, validators, formulas) { this.name = name; this.rows = rows || []; this.validators = validators || {}; this.formulas = formulas || {}; this.writes = []; }
+  raw(r, c) { const row = this.rows[r - 1]; const v = row ? row[c - 1] : undefined; return v === undefined || v === null ? '' : v; }
+  get(r, c) {
+    const f = this.formulas[c];
+    if (f && r >= 4 && String(this.raw(r, 1)).trim() !== '') return f(r);
+    return this.raw(r, c);
+  }
   put(r, c, v) {
+    if (this.formulas[c] && r >= 4) throw new Error('كتابة فوق عمود معادلة: ' + this.name + ' R' + r + 'C' + c);
     const allowed = this.validators[c];
     if (allowed && r >= 4 && v !== '' && allowed.indexOf(v) < 0) throw new Error('The data you entered in cell ' + this.name + ' R' + r + 'C' + c + ' violates the data validation rules: ' + v);
     while (this.rows.length < r) this.rows.push([]);
